@@ -8,21 +8,42 @@ const readJson = async (name) => JSON.parse(await readFile(resolve(dataDir, name
 const digest = async (name) => createHash("sha256").update(await readFile(resolve(dataDir, name))).digest("hex");
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 
-const [manifest, breeding, paldex] = await Promise.all([
-  readJson("manifest.json"), readJson("breeding.json"), readJson("paldex.json"),
+const [manifest, breeding, paldex, skills] = await Promise.all([
+  readJson("manifest.json"), readJson("breeding.json"), readJson("paldex.json"), readJson("skills.json"),
 ]);
 const pals = paldex.pals;
 const rules = breeding.rules;
+const activeSkills = skills.activeSkills;
+const partnerSkills = skills.partnerSkills;
 assert(pals.length === 306, `Expected 306 Pals, got ${pals.length}`);
 assert(rules.length === 46_972, `Expected 46972 rules, got ${rules.length}`);
+assert(activeSkills.length === 320, `Expected 320 active skills, got ${activeSkills.length}`);
+assert(partnerSkills.length === 288, `Expected 288 partner skills, got ${partnerSkills.length}`);
 assert(JSON.stringify(breeding.pals) === JSON.stringify(pals), "Paldex and breeding Pal records differ");
 
 const palIds = new Set(pals.map((pal) => pal.id));
 const ruleIds = new Set(rules.map((rule) => rule.id));
 const selectableIds = new Set(pals.filter((pal) => pal.selectable).map((pal) => pal.id));
+const activeById = new Map(activeSkills.map((skill) => [skill.id, skill]));
+const partnerById = new Map(partnerSkills.map((skill) => [skill.id, skill]));
 assert(palIds.size === pals.length, "Duplicate Pal ID");
 assert(ruleIds.size === rules.length, "Duplicate rule ID");
+assert(activeById.size === activeSkills.length, "Duplicate active-skill ID");
+assert(partnerById.size === partnerSkills.length, "Duplicate partner-skill ID");
 assert(selectableIds.size === 288, `Expected 288 selectable Pals, got ${selectableIds.size}`);
+for (const skill of activeSkills) {
+  assert(skill.names?.zh && skill.names?.en, `Missing active-skill name: ${skill.id}`);
+  assert(typeof skill.element === "string", `Invalid active-skill element: ${skill.id}`);
+  assert(Number.isFinite(skill.power), `Invalid active-skill power: ${skill.id}`);
+  assert(Number.isFinite(skill.cooldownSeconds), `Invalid active-skill cooldown: ${skill.id}`);
+  assert(typeof skill.canInherit === "boolean" && typeof skill.hasSkillFruit === "boolean",
+    `Invalid active-skill flags: ${skill.id}`);
+}
+const missingActiveDescriptions = activeSkills.filter((skill) => !skill.description?.zh).map((skill) => skill.id).sort();
+assert(JSON.stringify(missingActiveDescriptions) === JSON.stringify(["PredatorBeam", "PredatorLockon", "PredatorWave"]),
+  `Unexpected active-skill description gaps: ${missingActiveDescriptions.join(", ")}`);
+for (const skill of partnerSkills)
+  assert(skill.name && skill.description, `Incomplete partner skill: ${skill.id}`);
 const ruleSignatures = new Set();
 const placeholderIds = new Set();
 const iconHash = createHash("sha256");
@@ -44,6 +65,24 @@ for (const pal of palsById) {
   } else {
     placeholderIds.add(pal.id);
   }
+  assert(Array.isArray(pal.activeSkillRefs), `Missing active-skill references: ${pal.id}`);
+  assert(new Set(pal.activeSkillRefs.map((ref) => ref.id)).size === pal.activeSkillRefs.length,
+    `Duplicate active-skill reference: ${pal.id}`);
+  assert(pal.activeSkillRefs.every((ref, index, refs) => Number.isInteger(ref.level)
+    && ref.level >= 1 && ref.level <= 70 && (index === 0
+      || refs[index - 1].level < ref.level
+      || (refs[index - 1].level === ref.level && refs[index - 1].id <= ref.id))),
+  `Invalid or unordered active-skill levels: ${pal.id}`);
+  assert(pal.activeSkills.length === pal.activeSkillRefs.length, `Active-skill compatibility list mismatch: ${pal.id}`);
+  for (const [index, ref] of pal.activeSkillRefs.entries()) {
+    const skill = activeById.get(ref.id);
+    assert(skill, `Pal ${pal.id} references missing active skill: ${ref.id}`);
+    assert(pal.activeSkills[index] === skill.names.zh, `Active-skill name mismatch: ${pal.id}/${ref.id}`);
+    if (pal.selectable)
+      assert(skill.description?.zh, `Visible Pal ${pal.id} has undocumented active skill: ${ref.id}`);
+  }
+  if (pal.selectable)
+    assert(partnerById.has(pal.partnerSkillId), `Pal ${pal.id} references missing partner skill: ${pal.partnerSkillId}`);
 }
 assert(pals.every((pal) => typeof pal.partnerSkill === "string" && pal.partnerSkill.length > 0),
   "Expected partner-skill title coverage for every Pal");
@@ -74,7 +113,18 @@ assert(manifest.counts.selectablePals === selectableIds.size, "Manifest selectab
 assert(manifest.counts.usableRules === usableRules.length, "Manifest usable rule count mismatch");
 assert(manifest.counts.icons === pals.length, "Manifest icon count mismatch");
 assert(manifest.counts.gameIcons === 303 && manifest.counts.placeholderIcons === 3, "Manifest icon source counts mismatch");
+assert(manifest.counts.activeSkills === activeSkills.length, "Manifest active-skill count mismatch");
+assert(manifest.counts.partnerSkills === partnerSkills.length, "Manifest partner-skill count mismatch");
 assert(manifest.checksums.breeding === await digest("breeding.json"), "Breeding checksum mismatch");
 assert(manifest.checksums.paldex === await digest("paldex.json"), "Paldex checksum mismatch");
+assert(manifest.checksums.skills === await digest("skills.json"), "Skills checksum mismatch");
 assert(manifest.checksums.icons === iconHash.digest("hex"), "Icon bundle checksum mismatch");
-console.log(`Validated ${pals.length} Pals, ${rules.length} rules, and ${manifest.counts.icons} icons.`);
+assert(manifest.dataVersion.endsWith("-skills1"), `Unexpected data version: ${manifest.dataVersion}`);
+for (const [name, file] of [["activeSkillOverrides", "active-skill-overrides.zh-Hans.json"], ["partnerSkills", "partner-skills.zh-Hans.json"]]) {
+  const path = resolve(root, "scripts/vendor/paldb", file);
+  const snapshot = JSON.parse(await readFile(path, "utf8"));
+  const snapshotHash = createHash("sha256").update(await readFile(path)).digest("hex");
+  assert(manifest.sources.paldb[name].sourceSha256 === snapshot.sourceSha256, `PalDB ${name} source hash mismatch`);
+  assert(manifest.sources.paldb[name].snapshotSha256 === snapshotHash, `PalDB ${name} snapshot hash mismatch`);
+}
+console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, and ${manifest.counts.icons} icons.`);

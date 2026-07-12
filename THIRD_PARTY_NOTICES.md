@@ -16,7 +16,7 @@ The project's original code is licensed under the Star And Thank Author License 
 - Repository: <https://github.com/tylercamp/palcalc>
 - Snapshot: tag `v1.17.2`, commit `b5e13e90fedc2e95d54fa223da77be464c313001`
 - Data blobs: `db.json` `c9a010f3c4a93957251b6d5d1b9bc1b244256200`; `breeding.json` `2dc04d319bc2de89691031a0a4456aaa55882461`
-- Use: authoritative Pal identity, breeding, gender probability, localization, and base-stat data.
+- Use: authoritative Pal identity, breeding, gender probability, localization, base-stat data, and active-skill element/power/cooldown metadata.
 - Icons: `PalCalc.UI/Resources/Pals` at the same tag, renamed to internal IDs; these game-derived images are excluded from this project's SATA license.
 - License: MIT-style license, Copyright 2024 Tyler Camp. The repository license covers its software; it does not transfer Pocketpair's rights in extracted game data.
 
@@ -31,7 +31,7 @@ The project's original code is licensed under the Star And Thank Author License 
 
 - Repository: <https://github.com/oMaN-Rod/palworld-save-pal>
 - Snapshot: commit `e46188978a13e74d84c9a1ce5569497ee0555cae`
-- Use: element types and level-ordered active-skill assignments. PalCalc supplies the displayed localized skill names.
+- Use: element types, level-ordered active-skill assignments, and Chinese/English active-skill descriptions. PalCalc supplies the primary localized names and numeric metadata.
 - Data gap: the pinned table has an empty active-skill set for four selectable records (`LazyCatfish`, `LazyCatfish_Gold`, `GhostAnglerfish`, and `GhostAnglerfish_Fire`); the application shows no active skills for those records instead of inventing data.
 - License statement: its README states MIT; no standalone license file was present at the pinned snapshot.
 
@@ -39,5 +39,13 @@ The project's original code is licensed under the Star And Thank Author License 
 
 - Repository: <https://github.com/PalModding/UtililityFiles>
 - Snapshot: commit `455de2110d8414f703699204f33cb6ac052a3f98`; `DT_SkillNameText_Common` blob `25a3f5510c4a1b0304d1e31bb172bae21ae2bcb7`
-- Use: current partner-skill titles for all 306 records. Six visual/quest variants lack their own table row and are joined through Save Pal's explicit `tribe` field to the corresponding base-Pal row. This source table contains Japanese titles, which are preserved verbatim.
+- Use: Japanese fallback partner-skill titles for all 306 records. Six visual/quest variants lack their own table row and are joined through Save Pal's explicit `tribe` field to the corresponding base-Pal row. Player-facing records prefer the Chinese PalDB snapshot below.
 - License: no repository license was identified; the vendored extract is retained only as a transparent, pinned factual source and remains subject to its original rights.
+
+## PalDB
+
+- Website: <https://paldb.cc/>
+- Snapshot pages: <https://paldb.cc/cn/Partner_Skill> and <https://paldb.cc/cn/Active_Skills>, site version `v1.0.0`, fetched `2026-07-12T02:45:55Z`.
+- Source HTML SHA-256: partner skills `e92d8749f19e34fdae0c8c2a4e001b65430ebd28fbff5485e2acd10d42ea395d`; active skills `e997d9dccd6cf0f7d4c48a32517e59b56a9f82a532cea055d21a38b49bd768d1`.
+- Use: Chinese partner-skill names and descriptions for all 288 selectable Pal records, plus Chinese descriptions for the two CubeTurtle skills absent from the pinned Save Pal localization table. The snapshot is joined by game internal ID; the application never hotlinks or queries PalDB at runtime.
+- Rights: no open-data license was identified. The small factual/game-text snapshot is included for source transparency and remains subject to PalDB's and Pocketpair's applicable rights; it is excluded from this project's SATA license.

@@ -1,6 +1,28 @@
 export type Sex = "M" | "F";
 export type PalId = string;
 
+export interface PalSkillRef {
+  id: string;
+  level: number;
+}
+
+export interface ActiveSkillRecord {
+  id: string;
+  names: Readonly<{ zh: string; en: string }>;
+  description?: Readonly<{ zh?: string; en?: string }>;
+  element: string;
+  power: number;
+  cooldownSeconds: number;
+  canInherit: boolean;
+  hasSkillFruit: boolean;
+}
+
+export interface PartnerSkillRecord {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface PalRecord {
   id: PalId;
   dexNo: number;
@@ -13,7 +35,9 @@ export interface PalRecord {
   stats: Readonly<Record<string, number>>;
   workSuitability: Readonly<Record<string, number>>;
   activeSkills: readonly string[];
+  activeSkillRefs?: readonly PalSkillRef[];
   partnerSkill?: string;
+  partnerSkillId?: string;
   icon: string;
   /** False for internal/disabled records that rules may reference but selectors must hide. */
   selectable?: boolean;

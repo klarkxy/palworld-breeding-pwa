@@ -9,7 +9,7 @@ import { elementName, formatDex, isSelectablePal, usePalData, workName } from "@
 
 const route = useRoute();
 const router = useRouter();
-const { palById, isLoading, error, load } = usePalData();
+const { palById, activeSkillById, partnerSkillById, isLoading, error, load } = usePalData();
 const { entries, setSex } = useCollection();
 const id = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id);
 const pal = computed(() => {
@@ -20,6 +20,16 @@ const owned = computed(() => entries.value.find((entry) => entry.palId === pal.v
 const malePercent = computed(() => {
   const value = pal.value?.maleProbability ?? 0.5;
   return Math.round(value <= 1 ? value * 100 : value);
+});
+const activeSkillDetails = computed(() => (pal.value?.activeSkillRefs ?? [])
+  .map((reference) => {
+    const skill = activeSkillById.value.get(reference.id);
+    return skill ? { skill, level: reference.level } : undefined;
+  })
+  .filter((value) => value !== undefined));
+const partnerSkillDetails = computed(() => {
+  const skillId = pal.value?.partnerSkillId;
+  return skillId ? partnerSkillById.value.get(skillId) : undefined;
 });
 
 const statLabels: Record<string, string> = { hp: "生命", attack: "攻击", defense: "防御", stamina: "体力", support: "支援", speed: "速度" };
@@ -59,8 +69,27 @@ function openCalculator(kind: "parent" | "target") {
         <div class="detail-grid">
           <EggshellCard><p class="eyebrow">基础数值</p><h2>身体档案</h2><dl class="stat-grid"><div v-for="(value, key) in pal.stats" :key="key"><dt>{{ statName(key) }}</dt><dd>{{ value }}</dd></div><div><dt>雄性概率</dt><dd>{{ malePercent }}%</dd></div><div><dt>配种力</dt><dd>{{ pal.breedingPower }}</dd></div></dl></EggshellCard>
           <EggshellCard><p class="eyebrow">工作适应性</p><h2>据点分工</h2><ul v-if="Object.keys(pal.workSuitability).length" class="level-list"><li v-for="(level, work) in pal.workSuitability" :key="work"><span>{{ workName(work) }}</span><strong>Lv.{{ level }}</strong></li></ul><p v-else class="muted-copy">没有记录工作适应性。</p></EggshellCard>
-          <EggshellCard><p class="eyebrow">伙伴技能</p><h2>{{ pal.partnerSkill || "暂无记录" }}</h2><p class="muted-copy">技能效果以游戏内当前版本说明为准。</p></EggshellCard>
-          <EggshellCard><p class="eyebrow">主动技能</p><h2>可用招式</h2><ul v-if="pal.activeSkills.length" class="skill-list"><li v-for="skill in pal.activeSkills" :key="skill">{{ skill }}</li></ul><p v-else class="muted-copy">暂无主动技能数据。</p></EggshellCard>
+          <EggshellCard class="partner-skill-card">
+            <p class="eyebrow">伙伴技能</p>
+            <h2>{{ partnerSkillDetails?.name || pal.partnerSkill || "暂无记录" }}</h2>
+            <p v-if="partnerSkillDetails" class="muted-copy">{{ partnerSkillDetails.description }}</p>
+            <p v-else class="muted-copy">暂无简中说明。</p>
+          </EggshellCard>
+          <EggshellCard>
+            <p class="eyebrow">主动技能</p>
+            <h2>可用招式</h2>
+            <ul v-if="activeSkillDetails.length" class="skill-list">
+              <li v-for="item in activeSkillDetails" :key="`${item.skill.id}-${item.level}`">
+                <strong>{{ item.skill.names.zh }}</strong>
+                <small>{{ elementName(item.skill.element) }} · 威力 {{ item.skill.power }} · 冷却 {{ item.skill.cooldownSeconds }} 秒 · Lv.{{ item.level }}</small>
+                <p class="muted-copy">{{ item.skill.description?.zh || "暂无简中说明。" }}</p>
+              </li>
+            </ul>
+            <ul v-else-if="pal.activeSkills.length" class="skill-list">
+              <li v-for="skill in pal.activeSkills" :key="skill">{{ skill }}</li>
+            </ul>
+            <p v-else class="muted-copy">暂无主动技能数据。</p>
+          </EggshellCard>
         </div>
       </div>
       <div v-else class="empty-state"><span aria-hidden="true">?</span><p>图鉴中没有这个帕鲁。</p><RouterLink class="button button--primary" to="/paldex">返回图鉴</RouterLink></div>

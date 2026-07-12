@@ -1,15 +1,17 @@
 import { computed, readonly, ref, shallowRef } from "vue";
 import { pinyin } from "pinyin-pro";
 import { buildBreedingIndex } from "@/core";
-import type { BreedRule, BreedingIndex, PalId, PalRecord } from "@/core";
+import type {
+  ActiveSkillRecord, BreedRule, BreedingIndex, PalId, PalRecord, PartnerSkillRecord,
+} from "@/core";
 
 export interface DataManifest {
   gameVersion: string;
   dataVersion: string;
   generatedAt: string;
-  sources: Record<string, { repo: string; ref: string; commit: string }>;
-  counts: { pals: number; rules: number; icons: number };
-  checksums: { breeding: string; paldex: string };
+  sources: Record<string, Readonly<Record<string, unknown>>>;
+  counts: { pals: number; rules: number; icons: number; activeSkills?: number; partnerSkills?: number };
+  checksums: { breeding: string; paldex: string; skills?: string };
 }
 
 interface BreedingData {
@@ -21,9 +23,16 @@ interface PaldexData {
   pals: PalRecord[];
 }
 
+interface SkillsData {
+  activeSkills: ActiveSkillRecord[];
+  partnerSkills: PartnerSkillRecord[];
+}
+
 const manifest = shallowRef<DataManifest>();
 const pals = shallowRef<PalRecord[]>([]);
 const rules = shallowRef<BreedRule[]>([]);
+const activeSkills = shallowRef<ActiveSkillRecord[]>([]);
+const partnerSkills = shallowRef<PartnerSkillRecord[]>([]);
 const index = shallowRef<BreedingIndex>();
 const isLoading = ref(false);
 const error = ref("");
@@ -47,14 +56,17 @@ export async function loadPalData() {
   error.value = "";
   loadPromise = (async () => {
     try {
-      const [nextManifest, breeding, paldex] = await Promise.all([
+      const [nextManifest, breeding, paldex, skills] = await Promise.all([
         fetchJson<DataManifest>("manifest.json"),
         fetchJson<BreedingData>("breeding.json"),
         fetchJson<PaldexData>("paldex.json"),
+        fetchJson<SkillsData>("skills.json"),
       ]);
       manifest.value = nextManifest;
       pals.value = paldex.pals;
       rules.value = breeding.rules;
+      activeSkills.value = skills.activeSkills;
+      partnerSkills.value = skills.partnerSkills;
       const selectableIds = new Set(paldex.pals.filter(isSelectablePal).map((pal) => pal.id));
       const usableRules = breeding.rules.filter((rule) =>
         selectableIds.has(rule.parentA) && selectableIds.has(rule.parentB) && selectableIds.has(rule.child));
@@ -114,6 +126,8 @@ export function isSelectablePal(pal: PalRecord) {
 
 export function usePalData() {
   const palById = computed(() => new Map<PalId, PalRecord>(pals.value.map((pal) => [pal.id, pal])));
+  const activeSkillById = computed(() => new Map(activeSkills.value.map((skill) => [skill.id, skill])));
+  const partnerSkillById = computed(() => new Map(partnerSkills.value.map((skill) => [skill.id, skill])));
   const visiblePals = computed(() => pals.value.filter(isSelectablePal));
 
   return {
@@ -121,8 +135,12 @@ export function usePalData() {
     pals: readonly(pals),
     visiblePals,
     rules: readonly(rules),
+    activeSkills: readonly(activeSkills),
+    partnerSkills: readonly(partnerSkills),
     index: readonly(index),
     palById,
+    activeSkillById,
+    partnerSkillById,
     isLoading: readonly(isLoading),
     error: readonly(error),
     load: loadPalData,

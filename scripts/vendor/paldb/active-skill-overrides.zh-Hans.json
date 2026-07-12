@@ -1,0 +1,17 @@
+{
+  "source": "https://paldb.cc/cn/Active_Skills",
+  "fetchedAt": "2026-07-12T02:45:55Z",
+  "sourceSha256": "e997d9dccd6cf0f7d4c48a32517e59b56a9f82a532cea055d21a38b49bd768d1",
+  "entries": [
+    {
+      "id": "Unique_CubeTurtle_CubePress",
+      "name": "巨石压顶",
+      "description": "重岩龟的专用技能。 高高跃起至空中， 随即以压倒性的重量将敌人压垮。"
+    },
+    {
+      "id": "Unique_CubeTurtle_Neutral_HolyPress",
+      "name": "圣石压顶",
+      "description": "净岩龟的专用技能。 高高跃起至空中，将敌人压垮。 随后扩散光芒，以光柱进行追击。"
+    }
+  ]
+}

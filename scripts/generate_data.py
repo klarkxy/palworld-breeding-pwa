@@ -17,12 +17,23 @@ DATA = ROOT / "public" / "data"
 ICONS = ROOT / "public" / "icons"
 EXPECTED_PALS = 306
 EXPECTED_RULES = 46_972
+EXPECTED_ACTIVE_SKILLS = 320
+EXPECTED_PARTNER_SKILLS = 288
 EXPECTED_SAVEPAL_GAP = {"DarkMutant"}
 EXPECTED_EMPTY_ACTIVE_SKILLS = {
     "GhostAnglerfish",
     "GhostAnglerfish_Fire",
     "LazyCatfish",
     "LazyCatfish_Gold",
+}
+ACTIVE_SKILL_ALIASES = {
+    "Unique_PyramidTurtle_PyramidPress": "Unique_CubeTurtle_CubePress",
+    "Unique_PyramidTurtle_Neutral_HolyPress": "Unique_CubeTurtle_Neutral_HolyPress",
+}
+EXPECTED_UNDESCRIBED_ACTIVE_SKILLS = {
+    "PredatorBeam",
+    "PredatorLockon",
+    "PredatorWave",
 }
 
 
@@ -102,13 +113,80 @@ def make_icon(pal: dict[str, Any]) -> bytes:
     return svg.encode()
 
 
-def build_pals(db: dict[str, Any], save_pals: dict[str, Any]) -> list[dict[str, Any]]:
-    save_by_name = {name.casefold(): value for name, value in save_pals.items()}
-    active_by_name = {
-        skill["InternalName"].casefold(): skill for skill in db["ActiveSkills"]
-    }
+def build_skill_catalog(
+    db: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     save_skills_zh = read_json(VENDOR / "savepal" / "active-skills.zh-Hans.json")
     save_skills_en = read_json(VENDOR / "savepal" / "active-skills.en.json")
+    active_overrides_source = read_json(
+        VENDOR / "paldb" / "active-skill-overrides.zh-Hans.json"
+    )
+    active_overrides = {
+        entry["id"]: entry for entry in active_overrides_source["entries"]
+    }
+    active_skills: list[dict[str, Any]] = []
+    for source in db["ActiveSkills"]:
+        skill_id = source["InternalName"]
+        key = f"EPalWazaID::{skill_id}"
+        zh = save_skills_zh.get(key, {})
+        en = save_skills_en.get(key, {})
+        override = active_overrides.get(skill_id, {})
+        description = {
+            language: value
+            for language, value in (
+                ("zh", override.get("description") or zh.get("description")),
+                ("en", en.get("description")),
+            )
+            if value
+        }
+        skill = {
+            "id": skill_id,
+            "names": {
+                "zh": source["LocalizedNames"].get("zh-Hans") or source["Name"],
+                "en": source["LocalizedNames"].get("en") or source["Name"],
+            },
+            "element": source["ElementInternalName"],
+            "power": source["Power"],
+            "cooldownSeconds": source["CooldownSeconds"],
+            "canInherit": source["CanInherit"],
+            "hasSkillFruit": source["HasSkillFruit"],
+        }
+        if description:
+            skill["description"] = description
+        active_skills.append(skill)
+
+    partner_source = read_json(VENDOR / "paldb" / "partner-skills.zh-Hans.json")
+    partner_skills = [
+        {
+            "id": entry["palId"],
+            "name": entry["name"],
+            "description": entry["description"],
+        }
+        for entry in partner_source["entries"]
+    ]
+    assert len(active_skills) == EXPECTED_ACTIVE_SKILLS
+    assert len({skill["id"] for skill in active_skills}) == EXPECTED_ACTIVE_SKILLS
+    assert len(partner_skills) == EXPECTED_PARTNER_SKILLS
+    assert len({skill["id"] for skill in partner_skills}) == EXPECTED_PARTNER_SKILLS
+    assert {
+        skill["id"] for skill in active_skills if "description" not in skill
+    } == EXPECTED_UNDESCRIBED_ACTIVE_SKILLS
+    active_by_id = {skill["id"]: skill for skill in active_skills}
+    partner_by_id = {skill["id"]: skill for skill in partner_skills}
+    return (
+        {"activeSkills": active_skills, "partnerSkills": partner_skills},
+        active_by_id,
+        partner_by_id,
+    )
+
+
+def build_pals(
+    db: dict[str, Any],
+    save_pals: dict[str, Any],
+    active_by_id: dict[str, dict[str, Any]],
+    partner_by_id: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    save_by_name = {name.casefold(): value for name, value in save_pals.items()}
     partner_table = read_json(
         VENDOR / "palmodding" / "partner-skill-names.ja.json"
     )[0]["Rows"]
@@ -123,23 +201,20 @@ def build_pals(db: dict[str, Any], save_pals: dict[str, Any]) -> list[dict[str, 
             missing_savepal.add(internal_name)
             save = {}
 
-        active_skills: list[str] = []
+        active_skill_refs: list[dict[str, Any]] = []
         for skill_id, level in sorted(
-            save.get("skill_set", {}).items(), key=lambda item: (item[1], item[0])
+            save.get("skill_set", {}).items(),
+            key=lambda item: (item[1], ACTIVE_SKILL_ALIASES.get(item[0], item[0])),
         ):
-            skill = active_by_name.get(skill_id.casefold())
-            if skill:
-                name = skill["LocalizedNames"].get("zh-Hans") or skill["Name"]
-            else:
-                key = f"EPalWazaID::{skill_id}"
-                name = (
-                    save_skills_zh.get(key, {}).get("localized_name")
-                    or save_skills_en.get(key, {}).get("localized_name")
-                    or skill_id
-                )
-            active_skills.append(name)
+            catalog_id = ACTIVE_SKILL_ALIASES.get(skill_id, skill_id)
+            if catalog_id in active_by_id:
+                active_skill_refs.append({"id": catalog_id, "level": level})
 
         dex_no, variant = pal_key(source["Id"])
+        if 0 < dex_no < 10_000:
+            assert len(active_skill_refs) == len(save.get("skill_set", {})), (
+                f"Unresolved player-facing active skill: {internal_name}"
+            )
         # Some quest/visual variants have their own PalCalc ID but reuse the
         # game's underlying tribe. Save Pal exposes that join explicitly.
         partner_row = partner_table.get(f"PARTNERSKILL_{internal_name}")
@@ -148,6 +223,9 @@ def build_pals(db: dict[str, Any], save_pals: dict[str, Any]) -> list[dict[str, 
         partner_skill = (
             (partner_row or {}).get("TextData", {}).get("LocalizedString")
         )
+        partner_skill_id = internal_name
+        if partner_skill_id not in partner_by_id and save.get("tribe") in partner_by_id:
+            partner_skill_id = save["tribe"]
         probability = gender_probability[internal_name]["MALE"] * 100
         icon_suffix = ".png" if (ICONS / f"{internal_name}.png").exists() else ".svg"
         pal = {
@@ -175,17 +253,31 @@ def build_pals(db: dict[str, Any], save_pals: dict[str, Any]) -> list[dict[str, 
                 for key, value in source["WorkSuitability"].items()
                 if value > 0
             },
-            "activeSkills": active_skills,
+            "activeSkills": [
+                active_by_id[skill["id"]]["names"]["zh"]
+                for skill in active_skill_refs
+            ],
+            "activeSkillRefs": active_skill_refs,
             "icon": f"/icons/{internal_name}{icon_suffix}",
         }
         if partner_skill:
             pal["partnerSkill"] = partner_skill
+        if partner_skill_id in partner_by_id:
+            pal["partnerSkillId"] = partner_skill_id
         result.append(pal)
 
     assert missing_savepal == EXPECTED_SAVEPAL_GAP, (
         f"Unexpected save-pal join gaps: {sorted(missing_savepal)}"
     )
     assert sum("partnerSkill" in pal for pal in result) == EXPECTED_PALS
+    assert all(
+        "partnerSkillId" in pal for pal in result if pal["selectable"]
+    ), "Missing player-facing partner-skill references"
+    assert all(
+        ref["id"] in active_by_id
+        for pal in result
+        for ref in pal["activeSkillRefs"]
+    )
     assert {
         pal["id"] for pal in result if pal["selectable"] and not pal["activeSkills"]
     } == EXPECTED_EMPTY_ACTIVE_SKILLS
@@ -229,7 +321,13 @@ def main() -> None:
     validate_sources(db, breeding_source, compact)
 
     pals_by_key = {pal_key(pal["Id"]): pal["InternalName"] for pal in db["Pals"]}
-    pals = build_pals(db, read_json(VENDOR / "savepal" / "pals.json"))
+    skills, active_by_id, partner_by_id = build_skill_catalog(db)
+    pals = build_pals(
+        db,
+        read_json(VENDOR / "savepal" / "pals.json"),
+        active_by_id,
+        partner_by_id,
+    )
     rules = build_rules(breeding_source["Breeding"], pals_by_key)
     pal_ids = {pal["id"] for pal in pals}
     assert all(
@@ -242,6 +340,11 @@ def main() -> None:
     paldex = {"pals": pals}
     breeding_bytes = json_bytes(breeding)
     paldex_bytes = json_bytes(paldex)
+    skills_bytes = json_bytes(skills)
+    active_overrides_source = read_json(
+        VENDOR / "paldb" / "active-skill-overrides.zh-Hans.json"
+    )
+    partner_source = read_json(VENDOR / "paldb" / "partner-skills.zh-Hans.json")
     selectable = {pal["id"] for pal in pals if pal["selectable"]}
     usable_rules = sum(
         rule["parentA"] in selectable
@@ -255,6 +358,7 @@ def main() -> None:
     ICONS.mkdir(parents=True, exist_ok=True)
     (DATA / "breeding.json").write_bytes(breeding_bytes)
     (DATA / "paldex.json").write_bytes(paldex_bytes)
+    (DATA / "skills.json").write_bytes(skills_bytes)
     for pal in pals:
         svg_path = ICONS / f"{pal['id']}.svg"
         if (ICONS / f"{pal['id']}.png").exists():
@@ -264,7 +368,7 @@ def main() -> None:
 
     manifest = {
         "gameVersion": "1.0",
-        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}",
+        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}-skills1",
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "sources": {
             "palcalc": {
@@ -293,6 +397,24 @@ def main() -> None:
                 "commit": "455de2110d8414f703699204f33cb6ac052a3f98",
                 "blob": "25a3f5510c4a1b0304d1e31bb172bae21ae2bcb7",
             },
+            "paldb": {
+                "activeSkillOverrides": {
+                    "source": active_overrides_source["source"],
+                    "fetchedAt": active_overrides_source["fetchedAt"],
+                    "sourceSha256": active_overrides_source["sourceSha256"],
+                    "snapshotSha256": sha256(
+                        (VENDOR / "paldb" / "active-skill-overrides.zh-Hans.json").read_bytes()
+                    ),
+                },
+                "partnerSkills": {
+                    "source": partner_source["source"],
+                    "fetchedAt": partner_source["fetchedAt"],
+                    "sourceSha256": partner_source["sourceSha256"],
+                    "snapshotSha256": sha256(
+                        (VENDOR / "paldb" / "partner-skills.zh-Hans.json").read_bytes()
+                    ),
+                },
+            },
         },
         "counts": {
             "pals": len(pals),
@@ -302,10 +424,13 @@ def main() -> None:
             "icons": len(pals),
             "gameIcons": game_icons,
             "placeholderIcons": len(pals) - game_icons,
+            "activeSkills": len(skills["activeSkills"]),
+            "partnerSkills": len(skills["partnerSkills"]),
         },
         "checksums": {
             "breeding": sha256(breeding_bytes),
             "paldex": sha256(paldex_bytes),
+            "skills": sha256(skills_bytes),
             "icons": icon_bundle_sha256(pals),
         },
     }

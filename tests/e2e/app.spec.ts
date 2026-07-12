@@ -52,6 +52,12 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(page.locator(".paldex-card")).toHaveCount(1);
   await page.locator(".paldex-card").click();
   await expect(page.getByRole("heading", { name: "吓丝妮", level: 1 })).toBeVisible();
+  const partnerSkill = page.locator(".partner-skill-card");
+  await expect(partnerSkill.getByRole("heading", { name: "播撒欢笑的亡者" })).toBeVisible();
+  await expect(partnerSkill).toContainText("攻击陷入中毒状态的敌人时");
+  const darkBall = page.locator(".skill-list li").filter({ hasText: "暗黑球" });
+  await expect(darkBall).toContainText("暗 · 威力 50 · 冷却 2 秒 · Lv.1");
+  await expect(darkBall).toContainText("发射以缓慢速度追击敌人的黑暗之球。");
 });
 
 test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) => {

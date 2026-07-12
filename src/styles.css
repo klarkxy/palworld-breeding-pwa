@@ -239,7 +239,9 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .level-list, .skill-list { display: grid; gap: .4rem; }
 .level-list li span, .skill-list li { font-size: .75rem; }
 .level-list li strong { color: var(--coral-ink); font: 800 .75rem var(--utility); }
-.skill-list li { padding: .65rem .75rem; border-left: 3px solid var(--sky-500); border-radius: .3rem .7rem .7rem .3rem; background: var(--sky-50); }
+.skill-list li { display: grid; gap: .3rem; padding: .65rem .75rem; border-left: 3px solid var(--sky-500); border-radius: .3rem .7rem .7rem .3rem; background: var(--sky-50); }
+.skill-list li > small { color: var(--sky-700); font: 700 .68rem var(--utility); }
+.skill-list li > p { margin: 0; }
 .muted-copy { color: var(--ink-soft); font-size: .75rem; line-height: 1.6; }
 
 .site-footer { width: min(72rem, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 7rem; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: .65rem; line-height: 1.6; }
