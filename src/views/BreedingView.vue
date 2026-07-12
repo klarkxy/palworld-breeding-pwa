@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { findMates, getChildren, getParentPairs } from "@/core";
-import type { Sex } from "@/core";
+import type { PalId } from "@/core";
 import { useCollection } from "@/composables/useCollection";
 import { usePalData } from "@/composables/usePalData";
 import DataState from "@/components/DataState.vue";
@@ -25,8 +25,6 @@ const mode = ref<Mode>((route.query.mode as Mode) || "forward");
 const parentA = ref(typeof route.query.a === "string" ? route.query.a : "");
 const parentB = ref("");
 const target = ref(typeof route.query.target === "string" ? route.query.target : "");
-const sexA = ref<Sex | "">("");
-const sexB = ref<Sex | "">("");
 const ownedOnly = ref(false);
 
 watch(() => route.query, (query) => {
@@ -35,28 +33,37 @@ watch(() => route.query, (query) => {
   if (query.mode === "forward" || query.mode === "mate" || query.mode === "pairs") mode.value = query.mode;
 });
 
+interface Recipe {
+  a: PalId;
+  b: PalId;
+  child: PalId;
+}
+
+function uniqueRecipes(rows: readonly Recipe[]) {
+  const result = new Map<string, Recipe & { key: string }>();
+  for (const row of rows) {
+    const parents = [row.a, row.b].sort();
+    const key = `${parents[0]}\0${parents[1]}\0${row.child}`;
+    if (!result.has(key)) result.set(key, { ...row, key });
+  }
+  return [...result.values()];
+}
+
 const results = computed(() => {
   if (!index.value) return [];
   if (mode.value === "forward" && parentA.value && parentB.value) {
-    return getChildren(index.value, parentA.value, parentB.value, {
-      a: sexA.value || undefined,
-      b: sexB.value || undefined,
-    }).map((match) => ({
-      key: `${match.ruleId}-${match.parentASex}-${match.parentBSex}`,
-      a: match.parentA, aSex: match.parentASex, b: match.parentB, bSex: match.parentBSex, child: match.child,
-    }));
+    return uniqueRecipes(getChildren(index.value, parentA.value, parentB.value).map((match) => ({
+      a: match.parentA, b: match.parentB, child: match.child,
+    })));
   }
   if (mode.value === "mate" && parentA.value && target.value) {
-    return findMates(index.value, parentA.value, target.value, sexA.value || undefined).map((match) => ({
-      key: `${match.ruleId}-${match.parentSex}-${match.mateSex}`,
-      a: match.parent, aSex: match.parentSex, b: match.mate, bSex: match.mateSex, child: match.child,
-    }));
+    return uniqueRecipes(findMates(index.value, parentA.value, target.value).map((match) => ({
+      a: match.parent, b: match.mate, child: match.child,
+    })));
   }
   if (mode.value === "pairs" && target.value) {
-    return getParentPairs(index.value, target.value, ownedOnly.value ? entries.value : undefined).map((match) => ({
-      key: `${match.ruleId}-${match.parentASex}-${match.parentBSex}`,
-      a: match.parentA, aSex: match.parentASex, b: match.parentB, bSex: match.parentBSex, child: match.child,
-    }));
+    return uniqueRecipes(getParentPairs(index.value, target.value, ownedOnly.value ? entries.value : undefined)
+      .map((match) => ({ a: match.parentA, b: match.parentB, child: match.child })));
   }
   return [];
 });
@@ -69,7 +76,6 @@ const isReady = computed(() => mode.value === "forward"
 
 function swapParents() {
   [parentA.value, parentB.value] = [parentB.value, parentA.value];
-  [sexA.value, sexB.value] = [sexB.value, sexA.value];
 }
 </script>
 
@@ -87,10 +93,6 @@ function swapParents() {
         <div class="calculator-fields">
           <div v-if="mode !== 'pairs'" class="parent-field">
             <PalSelect v-model="parentA" :pals="visiblePals" label="亲本 A" />
-            <label class="field field--compact">
-              <span class="field__label">亲本 A 性别</span>
-              <select v-model="sexA"><option value="">不限</option><option value="M">♂ 雄性</option><option value="F">♀ 雌性</option></select>
-            </label>
           </div>
 
           <button v-if="mode === 'forward'" class="swap-button" type="button" aria-label="交换两个亲本" @click="swapParents">⇄</button>
@@ -99,10 +101,6 @@ function swapParents() {
 
           <div v-if="mode === 'forward'" class="parent-field">
             <PalSelect v-model="parentB" :pals="visiblePals" label="亲本 B" />
-            <label class="field field--compact">
-              <span class="field__label">亲本 B 性别</span>
-              <select v-model="sexB"><option value="">不限</option><option value="M">♂ 雄性</option><option value="F">♀ 雌性</option></select>
-            </label>
           </div>
           <PalSelect v-else v-model="target" :pals="visiblePals" label="目标子代 B" />
         </div>
@@ -119,12 +117,12 @@ function swapParents() {
         </header>
 
         <div v-if="!isReady" class="empty-state"><span aria-hidden="true">🥚</span><p>选好帕鲁后查看结果。</p></div>
-        <div v-else-if="!results.length" class="empty-state"><span aria-hidden="true">⌁</span><p>当前条件没有可行配方，试试放宽限制。</p></div>
+        <div v-else-if="!results.length" class="empty-state"><span aria-hidden="true">⌁</span><p>当前组合没有可行配方。</p></div>
         <ol v-else class="recipe-list">
           <li v-for="match in results" :key="match.key" class="recipe-row">
-            <PalChip :pal="palById.get(match.a)" :sex="match.aSex" />
+            <PalChip :pal="palById.get(match.a)" />
             <span class="operator">＋</span>
-            <PalChip :pal="palById.get(match.b)" :sex="match.bSex" />
+            <PalChip :pal="palById.get(match.b)" />
             <span class="operator">＝</span>
             <PalChip :pal="palById.get(match.child)" />
           </li>

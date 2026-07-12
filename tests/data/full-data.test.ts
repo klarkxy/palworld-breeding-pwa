@@ -59,6 +59,38 @@ describe("Palworld 1.0 generated data", () => {
     expect(palPinyinInitials(visible.find((pal) => pal.id === "CubeTurtle")!)).toBe("zyg");
   });
 
+  it("keeps locally unpacked movement parameters and Blueprint overrides", () => {
+    const movementFields = [
+      "slowWalkSpeed", "walkSpeed", "runSpeed", "rideSprintSpeed",
+      "transportSpeed", "swimSpeed", "swimDashSpeed",
+    ] as const;
+    expect(pals.every((pal) => movementFields.every((field) => Number.isFinite(pal.movement[field])))).toBe(true);
+    expect(pals.filter((pal) => pal.selectable).every((pal) => pal.movement.type)).toBe(true);
+    expect(Object.fromEntries(["ground", "fly", "flyAndLanding", "swim"].map((type) => [
+      type,
+      pals.filter((pal) => pal.selectable && pal.movement.type === type).length,
+    ]))).toEqual({ ground: 252, fly: 21, flyAndLanding: 7, swim: 8 });
+
+    expect(pals.find((pal) => pal.id === "JetDragon")?.movement).toMatchObject({
+      type: "fly", slowWalkSpeed: 200, walkSpeed: 800, runSpeed: 1700,
+      rideSprintSpeed: 3300, transportSpeed: 1250, swimSpeed: 510, swimDashSpeed: 990,
+    });
+    expect(pals.find((pal) => pal.id === "PoseidonOrca")?.movement).toMatchObject({
+      type: "ground", swimSpeed: 1800, swimDashSpeed: 2000,
+    });
+    expect(pals.find((pal) => pal.id === "BlackGriffon")?.movement).toMatchObject({
+      type: "flyAndLanding", flySpeedOverride: 1100, flySprintSpeedOverride: 1600,
+    });
+    expect(pals.filter((pal) => !pal.movement.type).map((pal) => pal.id).sort()).toEqual([
+      "AmaterasuWolf_Dark_Quest_Friend", "POLICE_HawkBird", "POLICE_ThunderDog",
+      "PREDATOR_FlowerRabbit_Quest", "YakushimaMonster001_Blue", "YakushimaMonster001_Pink",
+      "YakushimaMonster001_Purple", "YakushimaMonster001_Rainbow", "YakushimaMonster001_Red",
+    ]);
+    expect(pals.filter((pal) => pal.movement.flySpeedOverride !== undefined).map((pal) => pal.id).sort()).toEqual([
+      "BlackGriffon", "DarkMechaDragon", "FairyDragon", "FairyDragon_Water", "SkyDragon", "SkyDragon_Grass",
+    ]);
+  });
+
   it("resolves detailed active and partner skill text for every visible Pal", () => {
     expect(skills.activeSkills).toHaveLength(320);
     expect(skills.partnerSkills).toHaveLength(288);
@@ -75,5 +107,31 @@ describe("Palworld 1.0 generated data", () => {
     expect(activeById.get("Unique_CubeTurtle_CubePress")?.description?.zh)
       .toContain("重岩龟的专用技能");
     expect(partnerById.get("OniGhostGirl")?.name).toBe("播撒欢笑的亡者");
+  });
+
+  it("keeps exact zero-star and four-star refinement endpoints", () => {
+    const visible = pals.filter((pal) => pal.selectable);
+    expect(visible.every((pal) => pal.refinement?.fourStar.metrics.length)).toBe(true);
+    expect(visible.filter((pal) => pal.refinement?.zeroStar.metrics.length === 0).map((pal) => pal.id).sort())
+      .toEqual(["BlackCentaur", "FengyunDeeper", "Garm", "HawkBird", "SaintCentaur", "Serpent"]);
+    expect(Object.fromEntries(visible.map((pal) => [pal.refinement!.sourceKind,
+      visible.filter((entry) => entry.refinement?.sourceKind === pal.refinement?.sourceKind).length])))
+      .toEqual({ table: 270, blueprint: 17, constant: 1 });
+
+    const pinkCat = pals.find((pal) => pal.id === "PinkCat")!.refinement!;
+    expect(pinkCat.zeroStar.metrics[0]).toMatchObject({ label: "负重上限增加", value: 100, unit: "点" });
+    expect(pinkCat.fourStar.metrics[0]).toMatchObject({ label: "负重上限增加", value: 200, unit: "点" });
+
+    const anubis = pals.find((pal) => pal.id === "Anubis")!.refinement!;
+    expect(anubis.zeroStar).toMatchObject({ partnerSkillLevel: 1, consumedCopies: 0, statMultiplier: 1 });
+    expect(anubis.fourStar).toMatchObject({ partnerSkillLevel: 5, consumedCopies: 48, statMultiplier: 1.2 });
+    expect(anubis.zeroStar.workSuitability).toEqual({ handiwork: 6, mining: 6, transporting: 4 });
+    expect(anubis.fourStar.workSuitability).toEqual({ handiwork: 8, mining: 8, transporting: 6 });
+
+    const eagle = pals.find((pal) => pal.id === "Eagle")!.refinement!;
+    expect(eagle.zeroStar.metrics.find((metric) => metric.key === "gliderMaxSpeed")?.value).toBe(1000);
+    expect(eagle.fourStar.metrics.find((metric) => metric.key === "gliderMaxSpeed")?.value).toBe(1700);
+    expect(pals.find((pal) => pal.id === "SheepBall")!.refinement!.fourStar.metrics[0].value)
+      .toContain("羊毛 ×1～5");
   });
 });

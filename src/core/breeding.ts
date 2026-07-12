@@ -147,9 +147,7 @@ function ownedStateKeys(index: BreedingIndex, owned: readonly OwnedEntry[]): Set
   for (const entry of owned) {
     const pal = index.pals.get(entry.palId);
     if (!pal) continue;
-    const possible = new Set(getPossibleSexes(pal));
-    if (entry.male && possible.has("M")) result.add(stateKey({ palId: entry.palId, sex: "M" }));
-    if (entry.female && possible.has("F")) result.add(stateKey({ palId: entry.palId, sex: "F" }));
+    for (const sex of getPossibleSexes(pal)) result.add(stateKey({ palId: entry.palId, sex }));
   }
   return result;
 }
@@ -168,6 +166,13 @@ function planKey(plan: BreedPlan): string {
   return plan.steps.map((step, index) => stepKey(step, index === plan.steps.length - 1)).join(">");
 }
 
+function speciesPlanKey(plan: BreedPlan): string {
+  return plan.steps.map((step) => {
+    const parents = [step.parentA.palId, step.parentB.palId].sort(compareText);
+    return [String(step.generation).padStart(2, "0"), ...parents, step.child.palId].join("|");
+  }).join(">");
+}
+
 function comparePlan(a: BreedPlan, b: BreedPlan): number {
   return (
     a.generations - b.generations ||
@@ -180,20 +185,13 @@ function uniquePlans(plans: BreedPlan[], limit = RESULT_LIMIT): BreedPlan[] {
   const result: BreedPlan[] = [];
   const seen = new Set<string>();
   for (const plan of plans.sort(comparePlan)) {
-    const key = planKey(plan);
+    const key = speciesPlanKey(plan);
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(plan);
     if (result.length === limit) break;
   }
   return result;
-}
-
-function warningsForSteps(steps: readonly BreedStep[]): string[] {
-  return steps.slice(0, -1).map((step) => {
-    const sex = step.child.requiredSex === "M" ? "雄性" : "雌性";
-    return `中间帕鲁 ${step.child.palId} 需要孵出${sex}`;
-  });
 }
 
 export function buildBreedingIndex(
@@ -363,19 +361,10 @@ function startStates(index: BreedingIndex, start: ChainStart): PalState[] {
     const pal = index.pals.get(start);
     return pal ? getPossibleSexes(pal).map((sex) => ({ palId: start, sex })) : [];
   }
-  if ("sex" in start) {
-    const pal = index.pals.get(start.palId);
-    return pal && getPossibleSexes(pal).includes(start.sex)
-      ? [{ palId: start.palId, sex: start.sex }]
-      : [];
-  }
   const pal = index.pals.get(start.palId);
-  if (!pal) return [];
-  const possible = new Set(getPossibleSexes(pal));
-  const result: PalState[] = [];
-  if (start.male && possible.has("M")) result.push({ palId: start.palId, sex: "M" });
-  if (start.female && possible.has("F")) result.push({ palId: start.palId, sex: "F" });
-  return result;
+  return pal && getPossibleSexes(pal).includes(start.sex)
+    ? [{ palId: start.palId, sex: start.sex }]
+    : [];
 }
 
 function compareTransition(index: BreedingIndex, a: ChainTransition, b: ChainTransition): number {
@@ -510,7 +499,7 @@ export function findChains(
           requiredSex: index === transitions.length - 1 ? undefined : transition.child.sex,
         },
       }));
-      plans.push({ generations: transitions.length, steps, warnings: warningsForSteps(steps) });
+      plans.push({ generations: transitions.length, steps, warnings: [] });
     }
   }
   return uniquePlans(plans);
@@ -773,53 +762,27 @@ export function planFromOwned(
         return generation;
       };
       if (generationFor(node.rootKey) !== targetDepth) continue;
-      let choiceVariants = [node.choices];
-      // Owned parents add no dependency steps; expand their sex directions only
-      // after the canonical production group has reached the result frontier.
-      for (const [key, production] of node.choices) {
-        if (!ownedKeys.has(production.parentAKey) || !ownedKeys.has(production.parentBKey)) continue;
-        const alternatives = productionsFor(key).filter((candidate) =>
-          candidate.ruleId === production.ruleId &&
-          ownedKeys.has(candidate.parentAKey) && ownedKeys.has(candidate.parentBKey));
-        if (alternatives.length < 2) continue;
-        const next: Map<string, Production>[] = [];
-        for (const choices of choiceVariants) {
-          for (const alternative of alternatives) {
-            const variant = new Map(choices);
-            variant.set(key, alternative);
-            next.push(variant);
-            if (next.length === RESULT_LIMIT) break;
-          }
-          if (next.length === RESULT_LIMIT) break;
-        }
-        choiceVariants = next;
-      }
-      for (const choices of choiceVariants) {
-        const steps = [...choices.entries()].map(([key, production]) => ({
-          ruleId: production.ruleId,
-          generation: generationFor(key),
-          parentA: {
-            ...production.parentA,
-            origin: ownedKeys.has(production.parentAKey) ? "owned" as const : "bred" as const,
-          },
-          parentB: {
-            ...production.parentB,
-            origin: ownedKeys.has(production.parentBKey) ? "owned" as const : "bred" as const,
-          },
-          child: key === node.rootKey
-            ? { palId: production.child.palId }
-            : { palId: production.child.palId, requiredSex: production.child.sex },
-        })).sort((a, b) => a.generation - b.generation || compareText(stepKey(a), stepKey(b)));
-        const plan = { generations: targetDepth, steps, warnings: warningsForSteps(steps) } satisfies BreedPlan;
-        const key = planKey(plan);
-        if (!completeKeys.has(key)) {
-          completeKeys.add(key);
-          plans.push(plan);
-          if (plans.length >= RESULT_LIMIT) {
-            resultStepLimit = plans[RESULT_LIMIT - 1]!.steps.length;
-            break;
-          }
-        }
+      const steps = [...node.choices.entries()].map(([key, production]) => ({
+        ruleId: production.ruleId,
+        generation: generationFor(key),
+        parentA: {
+          ...production.parentA,
+          origin: ownedKeys.has(production.parentAKey) ? "owned" as const : "bred" as const,
+        },
+        parentB: {
+          ...production.parentB,
+          origin: ownedKeys.has(production.parentBKey) ? "owned" as const : "bred" as const,
+        },
+        child: key === node.rootKey
+          ? { palId: production.child.palId }
+          : { palId: production.child.palId, requiredSex: production.child.sex },
+      })).sort((a, b) => a.generation - b.generation || compareText(stepKey(a), stepKey(b)));
+      const plan = { generations: targetDepth, steps, warnings: [] } satisfies BreedPlan;
+      const key = speciesPlanKey(plan);
+      if (!completeKeys.has(key)) {
+        completeKeys.add(key);
+        plans.push(plan);
+        if (plans.length >= RESULT_LIMIT) resultStepLimit = plans[RESULT_LIMIT - 1]!.steps.length;
       }
       continue;
     }

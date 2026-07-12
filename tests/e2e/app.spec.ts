@@ -15,6 +15,8 @@ async function choose(page: Page, label: string, palId: string) {
 
 test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await openApp(page, "/breeding");
+  await expect(page.locator(".pal-select__filters")).toHaveCount(0);
+  await expect(page.getByText(/亲本 [AB] 性别|已有性别/)).toHaveCount(0);
   const parentASelect = page.locator(".pal-select").filter({ hasText: "亲本 A" });
   const parentAInput = parentASelect.locator('input[type="search"]');
   await parentAInput.fill("xsn");
@@ -32,7 +34,10 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await parentBInput.press("ArrowDown");
   await parentBInput.press("Enter");
   await expect(parentBInput).toHaveValue(/壶小象/);
-  await expect(page.locator(".recipe-row").first()).toContainText("球犰");
+  const firstRecipe = page.locator(".recipe-row").first();
+  await expect(page.locator(".recipe-row")).toHaveCount(1);
+  await expect(firstRecipe).toContainText("球犰");
+  await expect(firstRecipe).not.toContainText(/[♂♀]|雄性|雌性/);
 
   await page.getByRole("button", { name: /A ＋ \? ＝ B/ }).click();
   await choose(page, "亲本 A", "OniGhostGirl");
@@ -56,6 +61,7 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(firstPaldexCard.locator(".dex-stamp")).toHaveText("No. 001");
   await expect(firstPaldexCard.locator(".paldex-card__work")).toContainText(/手工作业\s*Lv\.1/);
   await expect(firstPaldexCard.locator(".self-breed-badge")).toHaveCount(0);
+  await expect(page.locator(".mount-tech-badge")).toHaveCount(115);
   const paldexColumns = await page.locator(".paldex-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
   expect(paldexColumns).toBe(page.viewportSize()!.width < 672 ? 1 : page.viewportSize()!.width < 1_088 ? 2 : 3);
   const paldexPreview = firstPaldexCard.locator(".paldex-preview");
@@ -64,6 +70,11 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
     await firstPaldexCard.hover();
     await expect(paldexPreview).toBeVisible();
   }
+  await page.getByLabel("搜索图鉴").fill("cmz");
+  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("乘骑 · 科技 Lv.6");
+  await expect(page.locator(".paldex-card")).toHaveAccessibleName(/乘骑 · 科技 Lv\.6/);
+  await page.getByLabel("搜索图鉴").fill("acj");
+  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("乘骑 · 无科技条目");
   await page.getByLabel("搜索图鉴").fill("ppj");
   const selfBreedCard = page.locator(".paldex-card");
   await expect(selfBreedCard).toHaveAccessibleName(/仅可同种自交/);
@@ -75,9 +86,18 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByLabel("搜索图鉴").fill("");
   await expect(page.getByLabel("搜索图鉴")).toHaveValue("");
+  await page.getByLabel("排序").selectOption("rideSprintSpeed");
+  await expect(page.locator(".paldex-card").first()).toContainText(/空涡龙[\s\S]*3300/);
+  const filterBarFits = await page.locator(".filter-bar--paldex").evaluate((element) =>
+    element.scrollWidth <= element.clientWidth + 1);
+  expect(filterBarFits).toBe(true);
   await page.getByLabel("工作").selectOption({ label: "采矿" });
   await expect(page.locator(".paldex-card").first()).toContainText(/磐甲龙[\s\S]*No\. 184/);
   await page.getByLabel("工作").selectOption("");
+  await page.getByLabel("排序").selectOption("flySpeedOverride");
+  await expect(page.locator(".paldex-card").first()).toContainText(/杰诺多兰[\s\S]*1700/);
+  await page.getByLabel("排序").selectOption("dex");
+  await expect(page.locator(".paldex-card").first()).toContainText(/棉悠悠[\s\S]*No\. 001/);
   await page.getByLabel("搜索图鉴").fill("xsn");
   await expect(page.locator(".paldex-card")).toHaveCount(1);
   await page.locator(".paldex-card").click();
@@ -91,6 +111,14 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   const partnerSkill = page.locator(".partner-skill-card");
   await expect(partnerSkill.getByRole("heading", { name: "播撒欢笑的亡者" })).toBeVisible();
   await expect(partnerSkill).toContainText("攻击陷入中毒状态的敌人时");
+  const refinementCard = drawer.locator(".refinement-card");
+  await expect(refinementCard.getByRole("heading", { name: "0 星 / 4 星对照" })).toBeVisible();
+  await expect(refinementCard).toContainText(/Lv\.1[\s\S]*Lv\.5[\s\S]*×1\.00[\s\S]*×1\.20/);
+  await expect(refinementCard.locator("tr").filter({ hasText: "攻击中毒目标时施加降攻" }))
+    .toContainText(/40[\s\S]*80/);
+  const movementCard = drawer.locator(".movement-card");
+  await expect(movementCard.getByRole("heading", { name: "移动参数" })).toBeVisible();
+  await expect(movementCard).toContainText(/内部移动类型：\s*地面[\s\S]*奔跑参数/);
   const darkBall = page.locator(".skill-list li").filter({ hasText: "暗黑球" });
   await expect(darkBall).toContainText("暗 · 威力 50 · 冷却 2 秒 · Lv.1");
   await expect(darkBall).toContainText("发射以缓慢速度追击敌人的黑暗之球。");
@@ -114,21 +142,43 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
 
 test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) => {
   await openApp(page, "/collection");
-  await page.getByLabel("搜索帕鲁").fill("xsn");
-  await expect(page.locator(".collection-card")).toHaveCount(1);
-  await page.getByLabel("搜索帕鲁").fill("");
-  const oni = page.locator(".collection-card").filter({ hasText: "吓丝妮" });
-  const ganesha = page.locator(".collection-card").filter({ hasText: "壶小象" });
-  await oni.getByLabel("♂ 雄").focus();
-  await oni.getByLabel("♂ 雄").press("Space");
-  await ganesha.getByLabel("♀ 雌").focus();
-  await ganesha.getByLabel("♀ 雌").press("Space");
+  await page.evaluate(() => localStorage.setItem("pal-lab.collection.v1", JSON.stringify({
+    schema: 1,
+    dataVersion: "legacy",
+    entries: [
+      { palId: "OniGhostGirl", male: true, female: false },
+      { palId: "Ganesha", male: false, female: true },
+    ],
+  })));
   await page.reload();
   await expect(page.locator(".data-version")).toContainText("1.0");
-  await expect(page.locator(".collection-card").filter({ hasText: "吓丝妮" }).getByLabel("♂ 雄")).toBeChecked();
-  await expect(page.locator(".collection-card").filter({ hasText: "壶小象" }).getByLabel("♀ 雌")).toBeChecked();
+  await page.getByLabel("搜索帕鲁").fill("xsn");
+  await expect(page.locator(".collection-card")).toHaveCount(1);
+  const oni = page.locator(".collection-card").filter({ hasText: "吓丝妮" });
+  await expect(oni.getByRole("checkbox")).toHaveCount(1);
+  await expect(oni.getByLabel("吓丝妮已拥有")).toBeChecked();
+  await page.getByLabel("搜索帕鲁").fill("");
+  const ganesha = page.locator(".collection-card").filter({ hasText: "壶小象" });
+  await expect(ganesha.getByRole("checkbox")).toHaveCount(1);
+  await expect(ganesha.getByLabel("壶小象已拥有")).toBeChecked();
+  await expect(page.getByText(/雄性记录|雌性记录|已有性别/)).toHaveCount(0);
+
+  const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("pal-lab.collection.v1") ?? "null") as {
+    schema: number;
+    entries: Record<string, unknown>[];
+  });
+  expect(migrated.schema).toBe(2);
+  expect(migrated.entries).toEqual([{ palId: "OniGhostGirl" }, { palId: "Ganesha" }]);
+  expect(migrated.entries.every((entry) => Object.keys(entry).length === 1)).toBe(true);
+
+  await page.reload();
+  await expect(page.locator(".data-version")).toContainText("1.0");
+  await expect(page.locator(".collection-card").filter({ hasText: "吓丝妮" }).getByLabel("吓丝妮已拥有")).toBeChecked();
+  await expect(page.locator(".collection-card").filter({ hasText: "壶小象" }).getByLabel("壶小象已拥有")).toBeChecked();
 
   await page.getByRole("link", { name: "路线", exact: true }).click();
+  await expect(page.getByText("已有性别")).toHaveCount(0);
+  await expect(page.locator(".pal-select__filters")).toHaveCount(0);
   await page.getByRole("button", { name: /从库存规划/ }).click();
   await choose(page, "目标帕鲁", "SmallArmadillo");
   const elapsed = await page.getByRole("button", { name: "检索最短路线" }).evaluate((element) => {
@@ -136,7 +186,9 @@ test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) 
     (element as HTMLButtonElement).click();
     return performance.now() - started;
   });
-  await expect(page.locator(".plan-card").first()).toContainText("1 代 · 1 次配种");
+  const firstPlan = page.locator(".plan-card").first();
+  await expect(firstPlan).toContainText("1 代 · 1 次配种");
+  await expect(firstPlan).not.toContainText(/[♂♀]|雄性|雌性/);
   expect(elapsed).toBeLessThan(1_000);
 });
 

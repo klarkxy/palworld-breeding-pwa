@@ -26,6 +26,11 @@ const ruleIds = new Set(rules.map((rule) => rule.id));
 const selectableIds = new Set(pals.filter((pal) => pal.selectable).map((pal) => pal.id));
 const activeById = new Map(activeSkills.map((skill) => [skill.id, skill]));
 const partnerById = new Map(partnerSkills.map((skill) => [skill.id, skill]));
+const movementFields = [
+  "slowWalkSpeed", "walkSpeed", "runSpeed", "rideSprintSpeed",
+  "transportSpeed", "swimSpeed", "swimDashSpeed",
+];
+const movementTypes = new Set(["ground", "fly", "flyAndLanding", "swim"]);
 assert(palIds.size === pals.length, "Duplicate Pal ID");
 assert(ruleIds.size === rules.length, "Duplicate rule ID");
 assert(activeById.size === activeSkills.length, "Duplicate active-skill ID");
@@ -51,6 +56,15 @@ const palsById = [...pals].sort((left, right) => left.id < right.id ? -1 : left.
 for (const pal of palsById) {
   assert(Number.isFinite(pal.dexNo), `Invalid dex number: ${pal.id}`);
   assert(Number.isFinite(pal.maleProbability), `Invalid gender probability: ${pal.id}`);
+  assert(pal.movement && movementFields.every((field) => Number.isFinite(pal.movement[field])),
+    `Invalid movement data: ${pal.id}`);
+  assert(!pal.selectable || movementTypes.has(pal.movement.type), `Missing movement type: ${pal.id}`);
+  assert((pal.movement.flySpeedOverride !== undefined) === (pal.movement.flySprintSpeedOverride !== undefined),
+    `Unpaired fly-speed override: ${pal.id}`);
+  if (pal.movement.flySpeedOverride !== undefined) {
+    assert(Number.isFinite(pal.movement.flySpeedOverride) && Number.isFinite(pal.movement.flySprintSpeedOverride),
+      `Invalid fly-speed override: ${pal.id}`);
+  }
   assert(pal.icon === `/icons/${pal.id}.png` || (!pal.selectable && pal.icon === `/icons/${pal.id}.svg`),
     `Unexpected icon path: ${pal.id}`);
   const iconPath = resolve(root, "public", pal.icon.slice(1));
@@ -83,9 +97,32 @@ for (const pal of palsById) {
   }
   if (pal.selectable)
     assert(partnerById.has(pal.partnerSkillId), `Pal ${pal.id} references missing partner skill: ${pal.partnerSkillId}`);
+  if (pal.selectable) {
+    const refinement = pal.refinement;
+    assert(refinement, `Missing refinement data: ${pal.id}`);
+    assert(["table", "constant", "blueprint"].includes(refinement.sourceKind), `Invalid refinement source: ${pal.id}`);
+    assert(refinement.zeroStar.stars === 0 && refinement.zeroStar.partnerSkillLevel === 1
+      && refinement.zeroStar.consumedCopies === 0 && refinement.zeroStar.statMultiplier === 1,
+    `Invalid zero-star refinement: ${pal.id}`);
+    assert(refinement.fourStar.stars === 4 && refinement.fourStar.partnerSkillLevel === 5
+      && refinement.fourStar.consumedCopies === 48 && refinement.fourStar.statMultiplier === 1.2,
+    `Invalid four-star refinement: ${pal.id}`);
+    assert(refinement.fourStar.metrics.length > 0, `Missing four-star partner effect: ${pal.id}`);
+    assert(JSON.stringify(Object.keys(refinement.zeroStar.workSuitability))
+      === JSON.stringify(Object.keys(refinement.fourStar.workSuitability)), `Work-suitability keys changed: ${pal.id}`);
+    assert(Object.values(refinement.fourStar.workSuitability).every((level) => Number.isInteger(level)
+      && level > 0 && level <= 10), `Invalid four-star work suitability: ${pal.id}`);
+  } else {
+    assert(pal.refinement === undefined, `Hidden Pal unexpectedly has refinement data: ${pal.id}`);
+  }
 }
 assert(pals.every((pal) => typeof pal.partnerSkill === "string" && pal.partnerSkill.length > 0),
   "Expected partner-skill title coverage for every Pal");
+const zeroStarWithoutExtraMetric = pals.filter((pal) => pal.selectable
+  && pal.refinement.zeroStar.metrics.length === 0).map((pal) => pal.id).sort();
+assert(JSON.stringify(zeroStarWithoutExtraMetric) === JSON.stringify([
+  "BlackCentaur", "FengyunDeeper", "Garm", "HawkBird", "SaintCentaur", "Serpent",
+]), `Unexpected zero-star metric gaps: ${zeroStarWithoutExtraMetric.join(", ")}`);
 const emptyVisibleSkillSets = pals.filter((pal) => pal.selectable && pal.activeSkills.length === 0)
   .map((pal) => pal.id).sort();
 assert(JSON.stringify(emptyVisibleSkillSets) === JSON.stringify([
@@ -115,11 +152,20 @@ assert(manifest.counts.icons === pals.length, "Manifest icon count mismatch");
 assert(manifest.counts.gameIcons === 303 && manifest.counts.placeholderIcons === 3, "Manifest icon source counts mismatch");
 assert(manifest.counts.activeSkills === activeSkills.length, "Manifest active-skill count mismatch");
 assert(manifest.counts.partnerSkills === partnerSkills.length, "Manifest partner-skill count mismatch");
+assert(manifest.counts.movementRecords === pals.length, "Manifest movement-record count mismatch");
+assert(manifest.counts.selectableMovementTypes === selectableIds.size, "Manifest movement-type count mismatch");
+assert(JSON.stringify(manifest.counts.movementTypes) === JSON.stringify({ ground: 252, fly: 21, flyAndLanding: 7, swim: 8 }),
+  `Unexpected movement-type counts: ${JSON.stringify(manifest.counts.movementTypes)}`);
+assert(manifest.counts.effectiveFlyOverrides === 6, "Unexpected fly-override count");
+assert(manifest.counts.refinementRecords === 288, "Unexpected refinement-record count");
+assert(manifest.counts.rankedPartnerSkillRecords === 270, "Unexpected ranked partner-skill count");
+assert(manifest.counts.changedPartnerSkillRecords === 258, "Unexpected changed partner-skill count");
+assert(manifest.counts.specialRefinementRecords === 18, "Unexpected special refinement count");
 assert(manifest.checksums.breeding === await digest("breeding.json"), "Breeding checksum mismatch");
 assert(manifest.checksums.paldex === await digest("paldex.json"), "Paldex checksum mismatch");
 assert(manifest.checksums.skills === await digest("skills.json"), "Skills checksum mismatch");
 assert(manifest.checksums.icons === iconHash.digest("hex"), "Icon bundle checksum mismatch");
-assert(manifest.dataVersion.endsWith("-skills1"), `Unexpected data version: ${manifest.dataVersion}`);
+assert(manifest.dataVersion.endsWith("-skills1-movement1-refinement1"), `Unexpected data version: ${manifest.dataVersion}`);
 for (const [name, file] of [["activeSkillOverrides", "active-skill-overrides.zh-Hans.json"], ["partnerSkills", "partner-skills.zh-Hans.json"]]) {
   const path = resolve(root, "scripts/vendor/paldb", file);
   const snapshot = JSON.parse(await readFile(path, "utf8"));
@@ -127,4 +173,70 @@ for (const [name, file] of [["activeSkillOverrides", "active-skill-overrides.zh-
   assert(manifest.sources.paldb[name].sourceSha256 === snapshot.sourceSha256, `PalDB ${name} source hash mismatch`);
   assert(manifest.sources.paldb[name].snapshotSha256 === snapshotHash, `PalDB ${name} snapshot hash mismatch`);
 }
+const movementPath = resolve(root, "scripts/vendor/palworld/movement-v1.json");
+const movementSnapshotBytes = await readFile(movementPath);
+const movementSnapshot = JSON.parse(movementSnapshotBytes.toString("utf8"));
+const movementById = new Map(movementSnapshot.records.map((record) => [record.id, record]));
+assert(movementById.size === pals.length, "Movement snapshot ID count mismatch");
+for (const pal of pals) {
+  const source = movementById.get(pal.id);
+  assert(source, `Missing movement snapshot row: ${pal.id}`);
+  for (const field of movementFields)
+    assert(pal.movement[field] === source[field], `Movement output mismatch: ${pal.id}.${field}`);
+  assert(pal.movement.type === source.movementType, `Movement type mismatch: ${pal.id}`);
+  assert(pal.movement.flySpeedOverride === source.flySpeedOverride, `Fly override mismatch: ${pal.id}`);
+  assert(pal.movement.flySprintSpeedOverride === source.flySprintSpeedOverride, `Fly sprint override mismatch: ${pal.id}`);
+}
+const missingMovementTypes = pals.filter((pal) => !pal.movement.type).map((pal) => pal.id).sort();
+assert(JSON.stringify(missingMovementTypes) === JSON.stringify([
+  "AmaterasuWolf_Dark_Quest_Friend", "POLICE_HawkBird", "POLICE_ThunderDog",
+  "PREDATOR_FlowerRabbit_Quest", "YakushimaMonster001_Blue", "YakushimaMonster001_Pink",
+  "YakushimaMonster001_Purple", "YakushimaMonster001_Rainbow", "YakushimaMonster001_Red",
+]), `Unexpected movement-type gaps: ${missingMovementTypes.join(", ")}`);
+const flyOverrideIds = pals.filter((pal) => pal.movement.flySpeedOverride !== undefined).map((pal) => pal.id).sort();
+assert(JSON.stringify(flyOverrideIds) === JSON.stringify([
+  "BlackGriffon", "DarkMechaDragon", "FairyDragon", "FairyDragon_Water", "SkyDragon", "SkyDragon_Grass",
+]), `Unexpected fly-speed overrides: ${flyOverrideIds.join(", ")}`);
+assert(pals.filter((pal) => pal.movement.rideSprintSpeed < 0).length === 3, "Ride-sprint sentinel count changed");
+assert(pals.filter((pal) => pal.movement.transportSpeed < 0).length === 21, "Transport sentinel count changed");
+assert(palsById.find((pal) => pal.id === "MimicDog").movement.swimDashSpeed === 0, "MimicDog swim sentinel changed");
+assert(manifest.sources.localGameMovement.snapshotSha256
+  === createHash("sha256").update(movementSnapshotBytes).digest("hex"), "Movement snapshot hash mismatch");
+assert(manifest.sources.localGameMovement.rawArtifactSha256
+  === "528b804632f0030186804cd9b1b3a3a89b75f046baa0c77e713d2e3e76009d16", "Raw unpack hash mismatch");
+const refinementPath = resolve(root, "scripts/vendor/palworld/refinement-v1.json");
+const refinementSnapshotBytes = await readFile(refinementPath);
+const refinementSnapshot = JSON.parse(refinementSnapshotBytes.toString("utf8"));
+const refinementById = new Map(refinementSnapshot.entries.map((entry) => [entry.id, entry]));
+assert(refinementById.size === selectableIds.size, "Refinement snapshot ID count mismatch");
+assert(refinementSnapshot.counts.tableRanked === 270 && refinementSnapshot.counts.tableChanged === 258
+  && refinementSnapshot.counts.specialCovered === 18, "Refinement snapshot counts changed");
+for (const pal of pals.filter((entry) => entry.selectable)) {
+  const source = refinementById.get(pal.id);
+  assert(source, `Missing refinement snapshot row: ${pal.id}`);
+  const output = { ...source };
+  delete output.id;
+  assert(JSON.stringify(pal.refinement) === JSON.stringify(output), `Refinement output mismatch: ${pal.id}`);
+}
+assert(pals.find((pal) => pal.id === "PinkCat").refinement.zeroStar.metrics[0].value === 100
+  && pals.find((pal) => pal.id === "PinkCat").refinement.fourStar.metrics[0].value === 200,
+"PinkCat refinement changed");
+assert(pals.find((pal) => pal.id === "OniGhostGirl").refinement.zeroStar.metrics[0].value === 40
+  && pals.find((pal) => pal.id === "OniGhostGirl").refinement.fourStar.metrics[0].value === 80,
+"OniGhostGirl refinement changed");
+assert(pals.find((pal) => pal.id === "Anubis").refinement.zeroStar.workSuitability.handiwork === 6
+  && pals.find((pal) => pal.id === "Anubis").refinement.fourStar.workSuitability.handiwork === 8,
+"Anubis work refinement changed");
+assert(pals.find((pal) => pal.id === "Umihebi_Fire").refinement.fourStar.workSuitability.kindling === 10,
+  "Single-work refinement cap changed");
+assert(pals.find((pal) => pal.id === "Eagle").refinement.zeroStar.metrics
+  .find((metric) => metric.key === "gliderMaxSpeed").value === 1000
+  && pals.find((pal) => pal.id === "Eagle").refinement.fourStar.metrics
+    .find((metric) => metric.key === "gliderMaxSpeed").value === 1700,
+"Eagle glider refinement changed");
+assert(manifest.sources.localGameRefinement.snapshotSha256
+  === createHash("sha256").update(refinementSnapshotBytes).digest("hex"), "Refinement snapshot hash mismatch");
+assert(manifest.sources.localGameRefinement.rawArtifactSha256.special
+  === "ca856bba482d8c2988d17dccde30880f49d0e4336e0260f68cd3e908febd3ae5",
+"Special refinement source hash mismatch");
 console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, and ${manifest.counts.icons} icons.`);

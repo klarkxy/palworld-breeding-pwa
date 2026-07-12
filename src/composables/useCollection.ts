@@ -7,9 +7,9 @@ const cleanedCount = ref(0);
 let isReady = false;
 
 interface StoredCollection {
-  schema: 1;
+  schema: 1 | 2;
   dataVersion: string;
-  entries: OwnedEntry[];
+  entries: unknown[];
 }
 
 function readStored(): StoredCollection | undefined {
@@ -24,32 +24,39 @@ function readStored(): StoredCollection | undefined {
 function persist(dataVersion: string) {
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ schema: 1, dataVersion, entries: entries.value } satisfies StoredCollection),
+    JSON.stringify({ schema: 2, dataVersion, entries: entries.value } satisfies StoredCollection),
   );
+}
+
+function storedPalId(value: unknown, schema: 1 | 2): PalId | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const entry = value as { palId?: unknown; male?: unknown; female?: unknown };
+  if (typeof entry.palId !== "string") return undefined;
+  if (schema === 1 && entry.male !== true && entry.female !== true) return undefined;
+  return entry.palId;
 }
 
 export function useCollection() {
   function initialize(validIds: ReadonlySet<PalId>, dataVersion: string) {
     if (isReady) return;
     const stored = readStored();
-    const restored = stored?.schema === 1 && Array.isArray(stored.entries) ? stored.entries : [];
-    entries.value = restored.filter((entry) =>
-      entry && typeof entry.palId === "string" && validIds.has(entry.palId)
-      && typeof entry.male === "boolean" && typeof entry.female === "boolean",
-    );
+    const hasKnownSchema = stored?.schema === 1 || stored?.schema === 2;
+    const schema = stored?.schema === 1 ? 1 : 2;
+    const restored = hasKnownSchema && Array.isArray(stored.entries) ? stored.entries : [];
+    const restoredIds = restored
+      .map((entry) => storedPalId(entry, schema))
+      .filter((palId): palId is PalId => Boolean(palId && validIds.has(palId)));
+    entries.value = [...new Set(restoredIds)].map((palId) => ({ palId }));
     cleanedCount.value = restored.length - entries.value.length;
     isReady = true;
-    watch(entries, () => persist(dataVersion), { deep: true });
+    watch(entries, () => persist(dataVersion));
     persist(dataVersion);
   }
 
-  function setSex(palId: PalId, sex: "male" | "female", owned: boolean) {
-    const current = entries.value.find((entry) => entry.palId === palId);
-    const next = current ?? { palId, male: false, female: false };
-    next[sex] = owned;
+  function setOwned(palId: PalId, owned: boolean) {
     entries.value = [
       ...entries.value.filter((entry) => entry.palId !== palId),
-      ...(next.male || next.female ? [{ ...next }] : []),
+      ...(owned ? [{ palId }] : []),
     ];
   }
 
@@ -57,5 +64,5 @@ export function useCollection() {
     entries.value = entries.value.filter((entry) => entry.palId !== palId);
   }
 
-  return { entries: readonly(entries), cleanedCount: readonly(cleanedCount), initialize, setSex, remove };
+  return { entries: readonly(entries), cleanedCount: readonly(cleanedCount), initialize, setOwned, remove };
 }
