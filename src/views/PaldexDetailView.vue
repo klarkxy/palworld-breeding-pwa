@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted, useTemplateRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
@@ -9,6 +9,8 @@ import { elementName, formatDex, isSelectablePal, usePalData, workName } from "@
 
 const route = useRoute();
 const router = useRouter();
+const emit = defineEmits<{ close: [] }>();
+const drawer = useTemplateRef<HTMLDialogElement>("drawer");
 const { palById, activeSkillById, partnerSkillById, isLoading, error, load } = usePalData();
 const { entries, setSex } = useCollection();
 const id = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id);
@@ -41,13 +43,18 @@ function openCalculator(kind: "parent" | "target") {
     ? { path: "/breeding", query: { mode: "forward", a: pal.value.id } }
     : { path: "/breeding", query: { mode: "pairs", target: pal.value.id } });
 }
+
+onMounted(() => drawer.value?.showModal());
 </script>
 
 <template>
-  <main class="page-shell">
+  <dialog ref="drawer" class="paldex-drawer" :aria-label="pal ? `${pal.names.zh}详细图鉴` : '帕鲁详细图鉴'" @close="emit('close')">
+    <header class="paldex-drawer__topbar">
+      <div><small>详细图鉴</small><strong>{{ pal?.names.zh ?? "帕鲁" }}</strong></div>
+      <form method="dialog"><button class="paldex-drawer__close" type="submit" aria-label="关闭详细图鉴" autofocus>×</button></form>
+    </header>
     <DataState :is-loading :error @retry="load">
-      <div v-if="pal" class="paldex-detail">
-        <RouterLink to="/paldex" class="back-link">← 返回图鉴</RouterLink>
+      <div v-if="pal" class="paldex-detail paldex-drawer__content">
         <EggshellCard tone="sky" class="detail-hero">
           <div class="detail-hero__art"><PalIcon :pal size="large" /></div>
           <div class="detail-hero__copy">
@@ -92,7 +99,7 @@ function openCalculator(kind: "parent" | "target") {
           </EggshellCard>
         </div>
       </div>
-      <div v-else class="empty-state"><span aria-hidden="true">?</span><p>图鉴中没有这个帕鲁。</p><RouterLink class="button button--primary" to="/paldex">返回图鉴</RouterLink></div>
+      <div v-else class="empty-state"><span aria-hidden="true">?</span><p>图鉴中没有这个帕鲁。</p></div>
     </DataState>
-  </main>
+  </dialog>
 </template>

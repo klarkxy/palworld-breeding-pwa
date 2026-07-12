@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalIcon from "@/components/PalIcon.vue";
 import { elementName, formatDex, palMatchesSearch, usePalData, workName } from "@/composables/usePalData";
 
+const router = useRouter();
 const { visiblePals, isLoading, error, load } = usePalData();
 const query = ref("");
 const element = ref("");
@@ -23,6 +25,11 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
 }).sort((a, b) =>
   (work.value ? (b.workSuitability[work.value] ?? 0) - (a.workSuitability[work.value] ?? 0) : 0) ||
   a.dexNo - b.dexNo || Number(a.variant) - Number(b.variant) || a.id.localeCompare(b.id, "en")));
+
+function closeDetail() {
+  if (typeof history.state?.back === "string") router.back();
+  else void router.replace("/paldex");
+}
 </script>
 
 <template>
@@ -70,5 +77,6 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
       </ul>
       <div v-if="!filteredPals.length" class="empty-state"><span aria-hidden="true">⌕</span><p>没有匹配项。</p></div>
     </DataState>
+    <RouterView v-slot="{ Component }"><component :is="Component" @close="closeDetail" /></RouterView>
   </main>
 </template>

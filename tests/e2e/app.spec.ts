@@ -69,6 +69,12 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await page.getByLabel("搜索图鉴").fill("xsn");
   await expect(page.locator(".paldex-card")).toHaveCount(1);
   await page.locator(".paldex-card").click();
+  const drawer = page.getByRole("dialog", { name: "吓丝妮详细图鉴" });
+  await expect(drawer).toBeVisible();
+  await expect(page.locator(".paldex-grid")).toBeVisible();
+  const drawerRatio = await drawer.evaluate((element) => element.getBoundingClientRect().width / innerWidth);
+  expect(drawerRatio).toBeGreaterThan(page.viewportSize()!.width < 672 ? .95 : .45);
+  expect(drawerRatio).toBeLessThan(page.viewportSize()!.width < 672 ? 1.01 : .55);
   await expect(page.getByRole("heading", { name: "吓丝妮", level: 1 })).toBeVisible();
   const partnerSkill = page.locator(".partner-skill-card");
   await expect(partnerSkill.getByRole("heading", { name: "播撒欢笑的亡者" })).toBeVisible();
@@ -76,6 +82,11 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   const darkBall = page.locator(".skill-list li").filter({ hasText: "暗黑球" });
   await expect(darkBall).toContainText("暗 · 威力 50 · 冷却 2 秒 · Lv.1");
   await expect(darkBall).toContainText("发射以缓慢速度追击敌人的黑暗之球。");
+  await drawer.getByRole("button", { name: "关闭详细图鉴" }).click();
+  await expect(drawer).toHaveCount(0);
+  await expect(page.getByLabel("搜索图鉴")).toHaveValue("xsn");
+  await expect(page.locator(".paldex-card")).toHaveCount(1);
+  await expect(page.locator(".paldex-card")).toBeFocused();
 });
 
 test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) => {
@@ -108,7 +119,7 @@ test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) 
 
 test("核心页面无严重无障碍问题", async ({ page }) => {
   test.setTimeout(60_000);
-  for (const route of ["/breeding", "/paths", "/collection", "/paldex"]) {
+  for (const route of ["/breeding", "/paths", "/collection", "/paldex", "/paldex/OniGhostGirl"]) {
     await openApp(page, route);
     if (route === "/breeding") await page.locator(".pal-select input").first().focus();
     await page.waitForTimeout(200);
