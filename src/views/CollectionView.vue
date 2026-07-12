@@ -24,7 +24,7 @@ const sexCounts = computed(() => ({
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="我的帕鲁 / Field notes" title="给库存标上性别" description="这里只记录物种和已有性别；路径规划会自动使用这份清单，不需要填写数量。" />
+    <PageIntro eyebrow="我的帕鲁" title="库存管理" description="记录物种和已有性别；路径规划会自动使用这份清单。" />
     <DataState :is-loading :error @retry="load">
       <p v-if="cleanedCount" class="notice">数据已升级，自动移除了 {{ cleanedCount }} 条失效记录。</p>
       <section class="collection-summary" aria-label="库存概览">
@@ -42,7 +42,7 @@ const sexCounts = computed(() => ({
         </div>
       </div>
 
-      <p class="result-note">显示 {{ filteredPals.length }} 种；勾选会立即保存在本机。</p>
+      <p class="result-note">显示 {{ filteredPals.length }} 种，勾选即保存。</p>
       <ul class="collection-grid">
         <li v-for="pal in filteredPals" :key="pal.id" class="collection-card" :class="{ 'collection-card--owned': ownedById.has(pal.id) }">
           <RouterLink :to="`/paldex/${encodeURIComponent(pal.id)}`" class="collection-card__identity">
@@ -56,7 +56,7 @@ const sexCounts = computed(() => ({
           </fieldset>
         </li>
       </ul>
-      <div v-if="!filteredPals.length" class="empty-state"><span aria-hidden="true">⌕</span><p>没有匹配的帕鲁，换一个关键词试试。</p></div>
+      <div v-if="!filteredPals.length" class="empty-state"><span aria-hidden="true">⌕</span><p>没有匹配的帕鲁。</p></div>
     </DataState>
   </main>
 </template>

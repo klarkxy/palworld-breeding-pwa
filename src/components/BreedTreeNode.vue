@@ -39,7 +39,7 @@ const originText = (parent: BreedParent) => parent.origin === "owned"
       <span class="operator" aria-label="等于">＝</span>
       <span class="dependency-node__child">
         <PalChip :pal="palById.get(node.step.child.palId)" :sex="node.step.child.requiredSex" />
-        <small v-if="node.step.child.requiredSex">需要孵出{{ node.step.child.requiredSex === "M" ? "雄性" : "雌性" }}</small>
+        <small v-if="node.step.child.requiredSex">需{{ node.step.child.requiredSex === "M" ? "雄" : "雌" }}</small>
       </span>
     </header>
 

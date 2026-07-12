@@ -24,7 +24,7 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="图鉴架 / Paldex shelf" title="查数据，也直接去配种" description="按名称、拼音首字母、编号、属性和工作适应性找到帕鲁；每一页都能直接带入计算器。" />
+    <PageIntro eyebrow="图鉴" title="帕鲁图鉴" description="按名称、编号、属性或工作适应性筛选帕鲁。" />
     <DataState :is-loading :error @retry="load">
       <section class="filter-bar filter-bar--paldex" aria-label="筛选图鉴">
         <label class="field filter-search"><span class="field__label">搜索图鉴</span><input v-model="query" type="search" placeholder="中文 / 拼音首字母 / English / 编号 / ID" /></label>
@@ -45,7 +45,7 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
           </RouterLink>
         </li>
       </ul>
-      <div v-if="!filteredPals.length" class="empty-state"><span aria-hidden="true">⌕</span><p>没有匹配项，清空一个筛选条件再试。</p></div>
+      <div v-if="!filteredPals.length" class="empty-state"><span aria-hidden="true">⌕</span><p>没有匹配项。</p></div>
     </DataState>
   </main>
 </template>

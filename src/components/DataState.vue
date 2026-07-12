@@ -6,7 +6,7 @@ defineEmits<{ retry: [] }>();
 <template>
   <div v-if="isLoading" class="data-state" role="status">
     <span class="egg-loader" aria-hidden="true" />
-    <p>正在整理 1.0 配种手册…</p>
+    <p>正在加载配种数据…</p>
   </div>
   <div v-else-if="error" class="data-state data-state--error" role="alert">
     <p><strong>数据没有加载成功</strong></p>

@@ -67,22 +67,22 @@ function openCalculator(kind: "parent" | "target") {
         </EggshellCard>
 
         <div class="detail-grid">
-          <EggshellCard><p class="eyebrow">基础数值</p><h2>身体档案</h2><dl class="stat-grid"><div v-for="(value, key) in pal.stats" :key="key"><dt>{{ statName(key) }}</dt><dd>{{ value }}</dd></div><div><dt>雄性概率</dt><dd>{{ malePercent }}%</dd></div><div><dt>配种力</dt><dd>{{ pal.breedingPower }}</dd></div></dl></EggshellCard>
-          <EggshellCard><p class="eyebrow">工作适应性</p><h2>据点分工</h2><ul v-if="Object.keys(pal.workSuitability).length" class="level-list"><li v-for="(level, work) in pal.workSuitability" :key="work"><span>{{ workName(work) }}</span><strong>Lv.{{ level }}</strong></li></ul><p v-else class="muted-copy">没有记录工作适应性。</p></EggshellCard>
+          <EggshellCard><p class="eyebrow">属性</p><h2>基础数值</h2><dl class="stat-grid"><div v-for="(value, key) in pal.stats" :key="key"><dt>{{ statName(key) }}</dt><dd>{{ value }}</dd></div><div><dt>雄性概率</dt><dd>{{ malePercent }}%</dd></div><div><dt>配种力</dt><dd>{{ pal.breedingPower }}</dd></div></dl></EggshellCard>
+          <EggshellCard><p class="eyebrow">工作</p><h2>据点分工</h2><ul v-if="Object.keys(pal.workSuitability).length" class="level-list"><li v-for="(level, work) in pal.workSuitability" :key="work"><span>{{ workName(work) }}</span><strong>Lv.{{ level }}</strong></li></ul><p v-else class="muted-copy">暂无数据。</p></EggshellCard>
           <EggshellCard class="partner-skill-card">
             <p class="eyebrow">伙伴技能</p>
-            <h2>{{ partnerSkillDetails?.name || pal.partnerSkill || "暂无记录" }}</h2>
+            <h2>{{ partnerSkillDetails?.name || pal.partnerSkill || "暂无" }}</h2>
             <p v-if="partnerSkillDetails" class="muted-copy">{{ partnerSkillDetails.description }}</p>
-            <p v-else class="muted-copy">暂无简中说明。</p>
+            <p v-else class="muted-copy">暂无说明。</p>
           </EggshellCard>
           <EggshellCard>
-            <p class="eyebrow">主动技能</p>
-            <h2>可用招式</h2>
+            <p class="eyebrow">技能</p>
+            <h2>主动技能</h2>
             <ul v-if="activeSkillDetails.length" class="skill-list">
               <li v-for="item in activeSkillDetails" :key="`${item.skill.id}-${item.level}`">
                 <strong>{{ item.skill.names.zh }}</strong>
                 <small>{{ elementName(item.skill.element) }} · 威力 {{ item.skill.power }} · 冷却 {{ item.skill.cooldownSeconds }} 秒 · Lv.{{ item.level }}</small>
-                <p class="muted-copy">{{ item.skill.description?.zh || "暂无简中说明。" }}</p>
+                <p class="muted-copy">{{ item.skill.description?.zh || "暂无说明。" }}</p>
               </li>
             </ul>
             <ul v-else-if="pal.activeSkills.length" class="skill-list">

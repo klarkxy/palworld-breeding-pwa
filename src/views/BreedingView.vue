@@ -15,8 +15,8 @@ const route = useRoute();
 const { visiblePals, palById, index, isLoading, error, load } = usePalData();
 const { entries } = useCollection();
 const modes = [
-  { id: "forward", label: "A ＋ B ＝ ?", help: "查看两个亲本会孵出谁" },
-  { id: "mate", label: "A ＋ ? ＝ B", help: "为固定亲本寻找配偶" },
+  { id: "forward", label: "A ＋ B ＝ ?", help: "两个亲本会孵出谁" },
+  { id: "mate", label: "A ＋ ? ＝ B", help: "为亲本寻找配偶" },
   { id: "pairs", label: "? ＋ ? ＝ B", help: "查看目标的全部父母组合" },
 ] as const;
 type Mode = (typeof modes)[number]["id"];
@@ -75,7 +75,7 @@ function swapParents() {
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="育种台 / Breed bench" title="把配种问题，放上实验台" description="正向算子代、反查配偶，或一次看完目标帕鲁的全部父母组合。" />
+    <PageIntro eyebrow="育种台" title="配种计算" description="正向算子代、反查配偶，或一次查看目标帕鲁的全部父母组合。" />
     <DataState :is-loading :error @retry="load">
       <div class="segmented-control" aria-label="选择计算方式">
         <button v-for="item in modes" :key="item.id" type="button" :class="{ active: mode === item.id }" :aria-pressed="mode === item.id" @click="mode = item.id">
@@ -108,7 +108,7 @@ function swapParents() {
         </div>
         <label v-if="mode === 'pairs'" class="check-row">
           <input v-model="ownedOnly" type="checkbox" />
-          只看“我的帕鲁”中现成可配的组合
+          只看库存中可直接配对的组合
         </label>
       </EggshellCard>
 
@@ -118,8 +118,8 @@ function swapParents() {
           <span v-if="isReady" class="result-count">{{ results.length }}</span>
         </header>
 
-        <div v-if="!isReady" class="empty-state"><span aria-hidden="true">🥚</span><p>选好帕鲁后，结果会在这里破壳。</p></div>
-        <div v-else-if="!results.length" class="empty-state"><span aria-hidden="true">⌁</span><p>当前条件没有可行配方，试试取消性别或库存限制。</p></div>
+        <div v-if="!isReady" class="empty-state"><span aria-hidden="true">🥚</span><p>选好帕鲁后查看结果。</p></div>
+        <div v-else-if="!results.length" class="empty-state"><span aria-hidden="true">⌁</span><p>当前条件没有可行配方，试试放宽限制。</p></div>
         <ol v-else class="recipe-list">
           <li v-for="match in results" :key="match.key" class="recipe-row">
             <PalChip :pal="palById.get(match.a)" :sex="match.aSex" />

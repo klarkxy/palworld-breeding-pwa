@@ -166,7 +166,7 @@ watch([() => model.value, () => pals.length], syncFromModel, { immediate: true }
           </span>
           <span class="pal-select__option-check" aria-hidden="true">{{ model === pal.id ? "✓" : "" }}</span>
         </li>
-        <li v-if="!suggestions.length" class="pal-select__empty" role="option" aria-disabled="true">没有匹配的帕鲁</li>
+        <li v-if="!suggestions.length" class="pal-select__empty" role="option" aria-disabled="true">没有匹配</li>
       </ul>
     </div>
     <details class="pal-select__filters" @toggle="closeMenu">

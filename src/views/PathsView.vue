@@ -38,14 +38,14 @@ function search() {
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="路线室 / Route room" title="从现有帕鲁，走到目标" description="按最少繁育代数查路线；库存模式会把两条中间支线合成一棵完整繁育树。" />
+    <PageIntro eyebrow="路线室" title="繁育路线" description="按最少繁育代数查路线；库存模式会把多条支线合成一棵完整繁育树。" />
     <DataState :is-loading :error @retry="load">
       <div class="segmented-control segmented-control--two" aria-label="选择路径模式">
         <button type="button" :class="{ active: mode === 'single' }" :aria-pressed="mode === 'single'" @click="mode = 'single'; plans = []; hasSearched = false">
-          <strong>单起点路线</strong><small>每代可推荐一个配偶</small>
+          <strong>单起点路线</strong><small>每代推荐一个配偶</small>
         </button>
         <button type="button" :class="{ active: mode === 'owned' }" :aria-pressed="mode === 'owned'" @click="mode = 'owned'; plans = []; hasSearched = false">
-          <strong>从我的帕鲁规划</strong><small>完整计算所有繁育支线</small>
+          <strong>从库存规划</strong><small>计算所有繁育支线</small>
         </button>
       </div>
 
@@ -70,10 +70,10 @@ function search() {
 
       <section class="results-section" aria-live="polite">
         <header class="section-heading"><div><p class="eyebrow">路线结果</p><h2>{{ hasSearched ? `${plans.length} 个最短方案` : "还没有开始检索" }}</h2></div></header>
-        <div v-if="!hasSearched" class="empty-state"><span aria-hidden="true">⌇</span><p>选定起点与目标，路线图会按代展开。</p></div>
-        <div v-else-if="!plans.length" class="empty-state"><span aria-hidden="true">∅</span><p>{{ mode === "owned" && !entries.length ? "先到“我的帕鲁”记录至少一雄一雌。" : "代数范围内没有路线，增加上限或更换起点。" }}</p></div>
+        <div v-if="!hasSearched" class="empty-state"><span aria-hidden="true">⌇</span><p>选定起点与目标，按代展开路线。</p></div>
+        <div v-else-if="!plans.length" class="empty-state"><span aria-hidden="true">∅</span><p>{{ mode === "owned" && !entries.length ? '先到"我的帕鲁"记录至少一雄一雌。' : "代数范围内没有路线，试试增加上限。" }}</p></div>
         <div v-else class="plan-list">
-          <p v-if="plans.length === 20" class="notice">结果已按最少代数、总步骤数和稳定规则顺序排序，仅显示前 20 条。</p>
+          <p v-if="plans.length === 20" class="notice">按最少代数排序，仅显示前 20 条。</p>
           <BreedPlanCard v-for="(plan, i) in plans" :key="i" :plan :pal-by-id :number="i + 1" />
         </div>
       </section>
