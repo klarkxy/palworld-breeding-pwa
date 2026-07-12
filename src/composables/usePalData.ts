@@ -34,6 +34,12 @@ const rules = shallowRef<BreedRule[]>([]);
 const activeSkills = shallowRef<ActiveSkillRecord[]>([]);
 const partnerSkills = shallowRef<PartnerSkillRecord[]>([]);
 const index = shallowRef<BreedingIndex>();
+const selfBreedOnlyIds = computed(() => new Set(
+  [...(index.value?.rulesByChild ?? [])]
+    .filter(([child, childRules]) => childRules.length > 0 &&
+      childRules.every((rule) => rule.parentA === child && rule.parentB === child))
+    .map(([child]) => child),
+));
 const isLoading = ref(false);
 const error = ref("");
 let loadPromise: Promise<void> | undefined;
@@ -138,6 +144,7 @@ export function usePalData() {
     activeSkills: readonly(activeSkills),
     partnerSkills: readonly(partnerSkills),
     index: readonly(index),
+    selfBreedOnlyIds,
     palById,
     activeSkillById,
     partnerSkillById,

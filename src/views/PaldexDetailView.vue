@@ -11,7 +11,7 @@ const route = useRoute();
 const router = useRouter();
 const emit = defineEmits<{ close: [] }>();
 const drawer = useTemplateRef<HTMLDialogElement>("drawer");
-const { palById, activeSkillById, partnerSkillById, isLoading, error, load } = usePalData();
+const { palById, activeSkillById, partnerSkillById, selfBreedOnlyIds, isLoading, error, load } = usePalData();
 const { entries, setSex } = useCollection();
 const id = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id);
 const pal = computed(() => {
@@ -68,7 +68,7 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
           <div class="detail-hero__copy">
             <p class="eyebrow">{{ formatDex(pal) }} · {{ pal.id }}</p>
             <h1>{{ pal.names.zh }}</h1><p class="detail-english">{{ pal.names.en }}</p>
-            <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span></div>
+            <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种雄性与雌性帕鲁产出">仅可自交</span></div>
             <div class="detail-actions">
               <button class="button button--primary" type="button" @click="openCalculator('parent')">设为亲本 A</button>
               <button class="button button--secondary" type="button" @click="openCalculator('target')">查全部父母组合</button>

@@ -7,7 +7,7 @@ import PalIcon from "@/components/PalIcon.vue";
 import { elementName, formatDex, palMatchesSearch, usePalData, workName } from "@/composables/usePalData";
 
 const router = useRouter();
-const { visiblePals, isLoading, error, load } = usePalData();
+const { visiblePals, selfBreedOnlyIds, isLoading, error, load } = usePalData();
 const query = ref("");
 const element = ref("");
 const work = ref("");
@@ -50,7 +50,7 @@ function closeDetail() {
             :to="`/paldex/${encodeURIComponent(pal.id)}`"
             class="paldex-card"
             :data-pal-id="pal.id"
-            :aria-label="`${pal.names.zh} ${formatDex(pal)}，打开详细图鉴`"
+            :aria-label="`${pal.names.zh} ${formatDex(pal)}${selfBreedOnlyIds.has(pal.id) ? '，仅可同种自交' : ''}，打开详细图鉴`"
             :aria-describedby="`paldex-preview-${pal.id}`"
           >
             <div class="paldex-card__art"><PalIcon :pal size="large" /></div>
@@ -59,7 +59,7 @@ function closeDetail() {
                 <div><h2>{{ pal.names.zh }}</h2><p>{{ pal.names.en }}</p></div>
                 <span class="dex-stamp">No. {{ formatDex(pal).slice(1) }}</span>
               </div>
-              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span></div>
+              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种雄性与雌性帕鲁产出">仅可自交</span></div>
               <div class="paldex-card__work">
                 <span class="paldex-card__work-label">工作适应性</span>
                 <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-card__work-list"><li v-for="(level, item) in pal.workSuitability" :key="item"><span>{{ workName(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>
@@ -67,7 +67,7 @@ function closeDetail() {
               </div>
             </div>
             <div :id="`paldex-preview-${pal.id}`" class="paldex-preview" role="tooltip">
-              <div class="paldex-preview__head"><strong>{{ formatDex(pal) }} · {{ pal.names.zh }}</strong><span>点击查看详细</span></div>
+              <div class="paldex-preview__head"><strong>{{ formatDex(pal) }} · {{ pal.names.zh }}</strong><span :class="{ 'self-breed-badge': selfBreedOnlyIds.has(pal.id) }">{{ selfBreedOnlyIds.has(pal.id) ? "仅可自交" : "点击查看详细" }}</span></div>
               <span class="paldex-preview__label">基础数值</span>
               <dl class="paldex-preview__stats"><div v-for="([key, label]) in quickStats" :key="key"><dt>{{ label }}</dt><dd>{{ pal.stats[key] ?? "—" }}</dd></div></dl>
               <span class="paldex-preview__label">工作等级</span>

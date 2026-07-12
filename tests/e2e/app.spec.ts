@@ -55,6 +55,7 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(firstPaldexCard).toContainText("棉悠悠");
   await expect(firstPaldexCard.locator(".dex-stamp")).toHaveText("No. 001");
   await expect(firstPaldexCard.locator(".paldex-card__work")).toContainText(/手工作业\s*Lv\.1/);
+  await expect(firstPaldexCard.locator(".self-breed-badge")).toHaveCount(0);
   const paldexColumns = await page.locator(".paldex-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
   expect(paldexColumns).toBe(page.viewportSize()!.width < 672 ? 1 : page.viewportSize()!.width < 1_088 ? 2 : 3);
   const paldexPreview = firstPaldexCard.locator(".paldex-preview");
@@ -63,6 +64,17 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
     await firstPaldexCard.hover();
     await expect(paldexPreview).toBeVisible();
   }
+  await page.getByLabel("搜索图鉴").fill("ppj");
+  const selfBreedCard = page.locator(".paldex-card");
+  await expect(selfBreedCard).toHaveAccessibleName(/仅可同种自交/);
+  await expect(selfBreedCard.locator(".tag-row .self-breed-badge")).toHaveText("仅可自交");
+  await selfBreedCard.click();
+  const selfBreedDrawer = page.getByRole("dialog", { name: "皮皮鸡详细图鉴" });
+  await expect(selfBreedDrawer.locator(".self-breed-badge")).toHaveText("仅可自交");
+  await selfBreedDrawer.getByRole("button", { name: "关闭详细图鉴" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByLabel("搜索图鉴").fill("");
+  await expect(page.getByLabel("搜索图鉴")).toHaveValue("");
   await page.getByLabel("工作").selectOption({ label: "采矿" });
   await expect(page.locator(".paldex-card").first()).toContainText(/磐甲龙[\s\S]*No\. 184/);
   await page.getByLabel("工作").selectOption("");

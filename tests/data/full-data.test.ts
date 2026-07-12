@@ -35,6 +35,13 @@ describe("Palworld 1.0 generated data", () => {
       usable.has(rule.parentA) && usable.has(rule.parentB) && usable.has(rule.child));
     expect(usableRules).toHaveLength(41_550);
     const index = buildBreedingIndex(pals, usableRules);
+    const selfBreedOnly = [...index.rulesByChild]
+      .filter(([child, childRules]) => childRules.length > 0 &&
+        childRules.every((rule) => rule.parentA === child && rule.parentB === child))
+      .map(([child]) => child);
+    expect(selfBreedOnly).toHaveLength(24);
+    expect(selfBreedOnly).toContain("ChickenPal");
+    expect(selfBreedOnly).not.toContain("SheepBall");
     const sample = usableRules.find((rule) => rule.allowedSexPairs.length === 2)!;
     const forward = getChildren(index, sample.parentA, sample.parentB)
       .map((match) => `${match.parentASex}${match.parentBSex}:${match.child}`).sort();
