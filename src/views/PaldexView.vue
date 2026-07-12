@@ -60,8 +60,10 @@ function mountTechnologyLabel(pal: PalRecord) {
   const description = pal.partnerSkillId ? partnerSkillById.value.get(pal.partnerSkillId)?.description : undefined;
   if (!description || !/可(?:骑|坐)在/.test(description)) return "";
   const level = description.match(/科技\s*(\d+)/)?.[1];
-  return level ? `乘骑 · 科技 Lv.${level}` : "乘骑 · 无科技条目";
+  return level ? `LV${level}` : "无科技条目";
 }
+const movementTypeLabels = { ground: "地面", fly: "飞行", flyAndLanding: "飞行兼落地", swim: "游泳" } as const;
+const mountMovementTypeLabel = (pal: PalRecord) => pal.movement.type ? movementTypeLabels[pal.movement.type] : "乘骑";
 
 const elementOptions = computed(() => [...new Set(visiblePals.value.flatMap((pal) => pal.elements))].sort());
 const workOptions = computed(() => [...new Set(visiblePals.value.flatMap((pal) => Object.keys(pal.workSuitability)))].sort());
@@ -113,7 +115,7 @@ function closeDetail() {
             :to="`/paldex/${encodeURIComponent(pal.id)}`"
             class="paldex-card"
             :data-pal-id="pal.id"
-            :aria-label="`${pal.names.zh} ${formatDex(pal)}${selfBreedOnlyIds.has(pal.id) ? '，仅可同种自交' : ''}${mountTechnologyLabel(pal) ? `，${mountTechnologyLabel(pal)}` : ''}，打开详细图鉴`"
+            :aria-label="`${pal.names.zh} ${formatDex(pal)}${selfBreedOnlyIds.has(pal.id) ? '，仅可同种自交' : ''}${mountTechnologyLabel(pal) ? `，${mountMovementTypeLabel(pal)}，${mountTechnologyLabel(pal)}` : ''}，打开详细图鉴`"
             :aria-describedby="`paldex-preview-${pal.id}`"
           >
             <div class="paldex-card__art"><PalIcon :pal size="large" /></div>
@@ -122,7 +124,7 @@ function closeDetail() {
                 <div><h2>{{ pal.names.zh }}</h2><p>{{ pal.names.en }}</p></div>
                 <span class="dex-stamp">No. {{ formatDex(pal).slice(1) }}</span>
               </div>
-              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="mountTechnologyLabel(pal)" class="tag mount-tech-badge">{{ mountTechnologyLabel(pal) }}</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种帕鲁产出">仅可自交</span></div>
+              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="mountTechnologyLabel(pal)" class="tag mount-type-badge">{{ mountMovementTypeLabel(pal) }}</span><span v-if="mountTechnologyLabel(pal)" class="tag mount-tech-badge">{{ mountTechnologyLabel(pal) }}</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种帕鲁产出">仅可自交</span></div>
               <div v-if="sortKey !== 'dex'" class="paldex-card__sort-value"><span>{{ selectedSort.label.replace(/（.*$/, "") }}</span><strong>{{ formatSortValue(pal) }}</strong></div>
               <div class="paldex-card__work">
                 <span class="paldex-card__work-label">工作适应性</span>
