@@ -52,11 +52,19 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
 
   await page.getByRole("link", { name: "图鉴" }).click();
   const firstPaldexCard = page.locator(".paldex-card").first();
-  await expect(firstPaldexCard).toContainText(/#001[\s\S]*棉悠悠/);
-  await firstPaldexCard.hover();
-  await expect(firstPaldexCard.getByRole("tooltip")).toContainText(/生命70[\s\S]*手工作业Lv\.1/);
+  await expect(firstPaldexCard).toContainText("棉悠悠");
+  await expect(firstPaldexCard.locator(".dex-stamp")).toHaveText("No. 001");
+  await expect(firstPaldexCard.locator(".paldex-card__work")).toContainText(/手工作业\s*Lv\.1/);
+  const paldexColumns = await page.locator(".paldex-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
+  expect(paldexColumns).toBe(page.viewportSize()!.width < 672 ? 1 : page.viewportSize()!.width < 1_088 ? 2 : 3);
+  const paldexPreview = firstPaldexCard.locator(".paldex-preview");
+  await expect(paldexPreview).toContainText(/生命70[\s\S]*手工作业Lv\.1/);
+  if (await page.evaluate(() => matchMedia("(hover: hover)").matches)) {
+    await firstPaldexCard.hover();
+    await expect(paldexPreview).toBeVisible();
+  }
   await page.getByLabel("工作").selectOption({ label: "采矿" });
-  await expect(page.locator(".paldex-card").first()).toContainText(/#184[\s\S]*磐甲龙/);
+  await expect(page.locator(".paldex-card").first()).toContainText(/磐甲龙[\s\S]*No\. 184/);
   await page.getByLabel("工作").selectOption("");
   await page.getByLabel("搜索图鉴").fill("xsn");
   await expect(page.locator(".paldex-card")).toHaveCount(1);

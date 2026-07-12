@@ -44,10 +44,18 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
             :aria-label="`${pal.names.zh} ${formatDex(pal)}，打开详细图鉴`"
             :aria-describedby="`paldex-preview-${pal.id}`"
           >
-            <div class="paldex-card__art"><PalIcon :pal size="large" /><span class="dex-stamp">{{ formatDex(pal) }}</span></div>
+            <div class="paldex-card__art"><PalIcon :pal size="large" /></div>
             <div class="paldex-card__body">
-              <h2>{{ pal.names.zh }}</h2><p>{{ pal.names.en }}</p>
-              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span></div>
+              <div class="paldex-card__identity">
+                <div><h2>{{ pal.names.zh }}</h2><p>{{ pal.names.en }}</p></div>
+                <span class="dex-stamp">No. {{ formatDex(pal).slice(1) }}</span>
+              </div>
+              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span></div>
+              <div class="paldex-card__work">
+                <span class="paldex-card__work-label">工作适应性</span>
+                <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-card__work-list"><li v-for="(level, item) in pal.workSuitability" :key="item"><span>{{ workName(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>
+                <span v-else class="paldex-card__work-empty">无据点工作</span>
+              </div>
             </div>
             <div :id="`paldex-preview-${pal.id}`" class="paldex-preview" role="tooltip">
               <div class="paldex-preview__head"><strong>{{ formatDex(pal) }} · {{ pal.names.zh }}</strong><span>点击查看详细</span></div>
@@ -57,7 +65,6 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
               <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-preview__work"><li v-for="(level, item) in pal.workSuitability" :key="item"><span>{{ workName(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>
               <span v-else class="paldex-preview__empty">无据点工作</span>
             </div>
-            <span class="card-arrow" aria-hidden="true">↗</span>
           </RouterLink>
         </li>
       </ul>
