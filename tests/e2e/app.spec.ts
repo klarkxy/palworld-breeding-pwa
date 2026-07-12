@@ -75,9 +75,18 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByLabel("搜索图鉴").fill("");
   await expect(page.getByLabel("搜索图鉴")).toHaveValue("");
+  await page.getByLabel("排序").selectOption("rideSprintSpeed");
+  await expect(page.locator(".paldex-card").first()).toContainText(/空涡龙[\s\S]*3300/);
+  const filterBarFits = await page.locator(".filter-bar--paldex").evaluate((element) =>
+    element.scrollWidth <= element.clientWidth + 1);
+  expect(filterBarFits).toBe(true);
   await page.getByLabel("工作").selectOption({ label: "采矿" });
   await expect(page.locator(".paldex-card").first()).toContainText(/磐甲龙[\s\S]*No\. 184/);
   await page.getByLabel("工作").selectOption("");
+  await page.getByLabel("排序").selectOption("flySpeedOverride");
+  await expect(page.locator(".paldex-card").first()).toContainText(/杰诺多兰[\s\S]*1700/);
+  await page.getByLabel("排序").selectOption("dex");
+  await expect(page.locator(".paldex-card").first()).toContainText(/棉悠悠[\s\S]*No\. 001/);
   await page.getByLabel("搜索图鉴").fill("xsn");
   await expect(page.locator(".paldex-card")).toHaveCount(1);
   await page.locator(".paldex-card").click();
@@ -91,6 +100,14 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   const partnerSkill = page.locator(".partner-skill-card");
   await expect(partnerSkill.getByRole("heading", { name: "播撒欢笑的亡者" })).toBeVisible();
   await expect(partnerSkill).toContainText("攻击陷入中毒状态的敌人时");
+  const refinementCard = drawer.locator(".refinement-card");
+  await expect(refinementCard.getByRole("heading", { name: "0 星 / 4 星对照" })).toBeVisible();
+  await expect(refinementCard).toContainText(/Lv\.1[\s\S]*Lv\.5[\s\S]*×1\.00[\s\S]*×1\.20/);
+  await expect(refinementCard.locator("tr").filter({ hasText: "攻击中毒目标时施加降攻" }))
+    .toContainText(/40[\s\S]*80/);
+  const movementCard = drawer.locator(".movement-card");
+  await expect(movementCard.getByRole("heading", { name: "移动参数" })).toBeVisible();
+  await expect(movementCard).toContainText(/内部移动类型：\s*地面[\s\S]*奔跑参数/);
   const darkBall = page.locator(".skill-list li").filter({ hasText: "暗黑球" });
   await expect(darkBall).toContainText("暗 · 威力 50 · 冷却 2 秒 · Lv.1");
   await expect(darkBall).toContainText("发射以缓慢速度追击敌人的黑暗之球。");

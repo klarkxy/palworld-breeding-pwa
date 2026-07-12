@@ -23,6 +23,53 @@ export interface PartnerSkillRecord {
   description: string;
 }
 
+export interface PartnerSkillRefinementMetric {
+  key: string;
+  label: string;
+  value: number | string;
+  unit?: string;
+  target?: string;
+  technicalId?: string;
+  sourceId?: string;
+  context?: string;
+  referenceOnly?: boolean;
+}
+
+export interface PartnerSkillRefinementRank {
+  stars: 0 | 4;
+  partnerSkillLevel: 1 | 5;
+  consumedCopies: 0 | 48;
+  statMultiplier: number;
+  workSuitability: Readonly<Record<string, number>>;
+  metrics: readonly PartnerSkillRefinementMetric[];
+}
+
+export interface PartnerSkillRefinement {
+  sourceKind: "table" | "constant" | "blueprint";
+  configuredBestWorkSuitability: string;
+  zeroStar: Readonly<PartnerSkillRefinementRank>;
+  fourStar: Readonly<PartnerSkillRefinementRank>;
+  notes?: readonly string[];
+  sourceAssets?: readonly string[];
+}
+
+export type PalMovementType = "ground" | "fly" | "flyAndLanding" | "swim";
+
+export interface PalMovementRecord {
+  type?: PalMovementType;
+  slowWalkSpeed: number;
+  walkSpeed: number;
+  runSpeed: number;
+  rideSprintSpeed: number;
+  transportSpeed: number;
+  swimSpeed: number;
+  swimDashSpeed: number;
+  /** Blueprint override; absent means the character table's run speed remains the baseline. */
+  flySpeedOverride?: number;
+  /** Blueprint override; absent means the character table's ride-sprint speed remains the baseline. */
+  flySprintSpeedOverride?: number;
+}
+
 export interface PalRecord {
   id: PalId;
   dexNo: number;
@@ -33,11 +80,13 @@ export interface PalRecord {
   breedingPower: number;
   internalIndex: number;
   stats: Readonly<Record<string, number>>;
+  movement: Readonly<PalMovementRecord>;
   workSuitability: Readonly<Record<string, number>>;
   activeSkills: readonly string[];
   activeSkillRefs?: readonly PalSkillRef[];
   partnerSkill?: string;
   partnerSkillId?: string;
+  refinement?: Readonly<PartnerSkillRefinement>;
   icon: string;
   /** False for internal/disabled records that rules may reference but selectors must hide. */
   selectable?: boolean;

@@ -38,9 +38,34 @@ The project's original code is licensed under the Star And Thank Author License 
 ## PalModding Utility Files
 
 - Repository: <https://github.com/PalModding/UtililityFiles>
-- Snapshot: commit `455de2110d8414f703699204f33cb6ac052a3f98`; `DT_SkillNameText_Common` blob `25a3f5510c4a1b0304d1e31bb172bae21ae2bcb7`
-- Use: Japanese fallback partner-skill titles for all 306 records. Six visual/quest variants lack their own table row and are joined through Save Pal's explicit `tribe` field to the corresponding base-Pal row. Player-facing records prefer the Chinese PalDB snapshot below.
+- Snapshot: commit `455de2110d8414f703699204f33cb6ac052a3f98`; `DT_SkillNameText_Common` blob `25a3f5510c4a1b0304d1e31bb172bae21ae2bcb7`; `Mapping.usmap` blob `4ae676dd2c13a3d74d32df5a89c6f437754ffcd6`, SHA-256 `741798898aabf3da8803e26ff005a35052b33bd0c90d771aabbb5f2c367f7df7`.
+- Use: Japanese fallback partner-skill titles for all 306 records, plus Unreal property mappings used while extracting the movement snapshot described below. Six visual/quest variants lack their own text-table row and are joined through Save Pal's explicit `tribe` field to the corresponding base-Pal row. Player-facing records prefer the Chinese PalDB snapshot below.
 - License: no repository license was identified; the vendored extract is retained only as a transparent, pinned factual source and remains subject to its original rights.
+
+## Locally extracted Palworld movement snapshot
+
+- Source: a legally installed local Steam copy of Palworld `1.0`, build `24088745`; `Pal-Windows.pak`, `DT_PalMonsterParameter`, and character Blueprints.
+- Raw artifact SHA-256: `528b804632f0030186804cd9b1b3a3a89b75f046baa0c77e713d2e3e76009d16`.
+- Checked-in normalized snapshot: `scripts/vendor/palworld/movement-v1.json`, covering all 306 current internal Pal IDs. All 288 selectable records have an internal movement type; nine hidden records have no matching Blueprint movement type.
+- Use: slow-walk, walk, run, ride-sprint, transport, swim, and swim-dash parameters; internal movement type; and six effective Blueprint fly-speed override pairs.
+- Semantics: values are game configuration parameters, not measured travel speeds. Negative values are unavailable sentinels. Movement type does not establish mountability, and a Blueprint fly override is not a universal final flight-speed formula.
+- Rights: the normalized facts and game-derived terminology remain subject to Pocketpair's applicable rights and are excluded from this project's SATA license.
+
+## Locally extracted Palworld refinement snapshot
+
+- Source: the same legally installed local Steam copy of Palworld `1.0`, build `24088745`; `Pal-Windows.pak`, `BP_PalGameSetting`, partner/passive-skill tables, common Pal parameters, character Blueprints, ranch item lotteries, and glider components.
+- Checked-in normalized snapshot: `scripts/vendor/palworld/refinement-v1.json`, covering the 0-star and 4-star endpoints of all 288 selectable Pal IDs. It contains 270 five-rank table records and 18 Blueprint/ranch/glider/constant special records.
+- Raw SHA-256 values: partner table `821d03bf847beb790704be96f6adcf208c2715a18fa038e66fad0294e3e338c9`; passive table `5e5b31e42c08c39dd98a31f2c4f7cf01205e3fa6dced01762154fb0ed3012a34`; common passive table `93df6bcf7f01224230746de98a62553017cf5596424238d80a35c107ff148072`; common Pal table `dd4635e3fca3e8d6e0cafc173fd2fccfe7097a876b34940c77390a36e8244780`; normalized special-case evidence `ca856bba482d8c2988d17dccde30880f49d0e4336e0260f68cd3e908febd3ae5`.
+- Semantics: Rank 1/index 0 is 0 stars and Rank 5/index 4 is 4 stars. Numeric fields without a proven unit are retained as internal values. The detailed first-three-star work allocation is a deterministic inference from the official 1.0 rule and current runtime endpoint checks; it is identified as such in the README and UI.
+- External interpretation checks: Pocketpair's [official 1.0 changelog](https://store.steampowered.com/news/app/1623730/view/686383649529010623) documents the work-rank overhaul; a [current runtime report](https://www.reddit.com/r/Palworld/comments/1utxoe6/psa_understanding_why_your_anubis_is_crafting_so/) was used to cross-check representative final levels.
+- Rights: these normalized facts, game text, item names, and terminology remain subject to Pocketpair's applicable rights and are excluded from this project's SATA license.
+
+## CUE4Parse
+
+- Repository: <https://github.com/FabianFG/CUE4Parse>
+- Extractor package: `CUE4Parse` `1.2.2.202607`, repository commit `ecad882a3049df6f27e0c5c3a3531346305c010b`.
+- Use: one-time local parsing of the installed Unreal Engine package and Blueprints. CUE4Parse is not a browser runtime dependency and is not distributed with the application.
+- License: Apache License 2.0, Copyright 2026 FabianFG.
 
 ## PalDB
 
