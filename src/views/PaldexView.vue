@@ -19,7 +19,7 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
   if (variant.value === "base" && pal.variant) return false;
   if (variant.value === "variant" && !pal.variant) return false;
   return palMatchesSearch(pal, query.value);
-}));
+}).sort((a, b) => a.dexNo - b.dexNo || Number(a.variant) - Number(b.variant) || a.id.localeCompare(b.id, "en")));
 </script>
 
 <template>

@@ -48,6 +48,7 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(page.locator(".recipe-row").first()).toBeVisible();
 
   await page.getByRole("link", { name: "图鉴" }).click();
+  await expect(page.locator(".paldex-card").first()).toContainText(/#001[\s\S]*棉悠悠/);
   await page.getByLabel("搜索图鉴").fill("xsn");
   await expect(page.locator(".paldex-card")).toHaveCount(1);
   await page.locator(".paldex-card").click();
