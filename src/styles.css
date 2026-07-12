@@ -225,6 +225,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .tag-row { display: flex; flex-wrap: wrap; gap: .3rem; }
 .tag { padding: .25rem .45rem; border-radius: 999px; background: var(--sky-100); color: var(--sky-700); font-size: .58rem; font-weight: 800; }
 .tag--coral { background: var(--coral-soft); color: #84382d; }
+.mount-tech-badge { background: var(--yellow); color: #604400; }
 .self-breed-badge { display: inline-flex; flex: none; align-items: center; padding: .22rem .45rem; border: 1px solid var(--coral-ink); border-radius: .3rem; background: var(--coral-soft); color: var(--coral-ink); font: 800 .58rem/1.2 var(--utility); letter-spacing: .04em; white-space: nowrap; }
 .element-tag { --element-color: #83959e; display: inline-flex; align-items: center; gap: .28rem; border: 1px solid var(--line); background: rgba(255,255,255,.72); color: var(--ink); }
 .element-tag::before { width: .42rem; height: .42rem; border-radius: .08rem; background: var(--element-color); content: ""; transform: rotate(45deg); }

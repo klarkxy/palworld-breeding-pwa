@@ -56,6 +56,7 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(firstPaldexCard.locator(".dex-stamp")).toHaveText("No. 001");
   await expect(firstPaldexCard.locator(".paldex-card__work")).toContainText(/手工作业\s*Lv\.1/);
   await expect(firstPaldexCard.locator(".self-breed-badge")).toHaveCount(0);
+  await expect(page.locator(".mount-tech-badge")).toHaveCount(115);
   const paldexColumns = await page.locator(".paldex-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
   expect(paldexColumns).toBe(page.viewportSize()!.width < 672 ? 1 : page.viewportSize()!.width < 1_088 ? 2 : 3);
   const paldexPreview = firstPaldexCard.locator(".paldex-preview");
@@ -64,6 +65,11 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
     await firstPaldexCard.hover();
     await expect(paldexPreview).toBeVisible();
   }
+  await page.getByLabel("搜索图鉴").fill("cmz");
+  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("乘骑 · 科技 Lv.6");
+  await expect(page.locator(".paldex-card")).toHaveAccessibleName(/乘骑 · 科技 Lv\.6/);
+  await page.getByLabel("搜索图鉴").fill("acj");
+  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("乘骑 · 无科技条目");
   await page.getByLabel("搜索图鉴").fill("ppj");
   const selfBreedCard = page.locator(".paldex-card");
   await expect(selfBreedCard).toHaveAccessibleName(/仅可同种自交/);
