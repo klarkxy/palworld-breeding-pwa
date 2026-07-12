@@ -7,6 +7,8 @@ import { isSelectablePal, usePalData } from "@/composables/usePalData";
 const { manifest, pals, load } = usePalData();
 const { initialize } = useCollection();
 const { needRefresh, updateServiceWorker } = useRegisterSW();
+const licenseUrl = `${import.meta.env.BASE_URL}LICENSE.txt`;
+const noticesUrl = `${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`;
 const navigation = [
   { to: "/breeding", label: "配种", icon: "⊕" },
   { to: "/paths", label: "路线", icon: "⌁" },
@@ -48,6 +50,7 @@ watch([manifest, pals], ([nextManifest, nextPals]) => {
   <footer class="site-footer">
     <p><strong>帕鲁孵化实验室</strong> · 数据版本 {{ manifest?.dataVersion ?? "加载中" }}</p>
     <p>非官方工具。游戏名称、图标及相关资产权利归 Pocketpair；本站不隶属于或受其背书。</p>
+    <p><a :href="licenseUrl">项目许可证（SATA-2.0）</a> · <a :href="noticesUrl">第三方许可与声明</a></p>
   </footer>
 
   <aside v-if="needRefresh" class="update-toast" role="status">

@@ -1,5 +1,7 @@
 # 帕鲁孵化实验室
 
+> 在线使用：[https://klarkxy.github.io/palworld-breeding-pwa/](https://klarkxy.github.io/palworld-breeding-pwa/)
+
 面向《幻兽帕鲁》正式版 1.0 的离线优先配种计算器与实用图鉴。
 
 ## 功能

@@ -41,11 +41,9 @@ interface Production {
   parentA: PalState;
   parentB: PalState;
   child: PalState;
-}
-
-interface InternalPlan {
-  generations: number;
-  steps: BreedStep[];
+  parentAKey: string;
+  parentBKey: string;
+  childKey: string;
 }
 
 function compareText(a: string, b: string): number {
@@ -453,24 +451,41 @@ export function findChains(
   for (const incoming of predecessors.values()) incoming.sort((a, b) => compareTransition(index, a, b));
 
   const initialKeys = new Set(initial.map(stateKey));
-  const memo = new Map<string, ChainTransition[][]>();
-  const pathKey = (path: readonly ChainTransition[]) => path.map((transition) => [
+  interface ChainPath {
+    transitions: ChainTransition[];
+    key: string;
+  }
+  const memo = new Map<string, ChainPath[]>();
+  const transitionKey = (transition: ChainTransition) => [
     String(transition.ruleId).padStart(10, "0"),
     stateKey(transition.from),
     stateKey(transition.mate),
     stateKey(transition.child),
-  ].join("|")).join(">");
-  const pathsTo = (key: string): ChainTransition[][] => {
-    if (initialKeys.has(key)) return [[]];
+  ].join("|");
+  const pathsTo = (key: string): ChainPath[] => {
+    if (initialKeys.has(key)) return [{ transitions: [], key: "" }];
     const cached = memo.get(key);
     if (cached) return cached;
-    const result: ChainTransition[][] = [];
+    const result: ChainPath[] = [];
     for (const transition of predecessors.get(key) ?? []) {
       for (const prefix of pathsTo(stateKey(transition.from))) {
-        result.push([...prefix, transition]);
+        const suffix = transitionKey(transition);
+        const candidate = {
+          transitions: [...prefix.transitions, transition],
+          key: prefix.key ? `${prefix.key}>${suffix}` : suffix,
+        } satisfies ChainPath;
+        if (result.length === RESULT_LIMIT && candidate.key >= result.at(-1)!.key) continue;
+        let low = 0;
+        let high = result.length;
+        while (low < high) {
+          const middle = (low + high) >>> 1;
+          if (result[middle]!.key < candidate.key) low = middle + 1;
+          else high = middle;
+        }
+        if (result[low]?.key === candidate.key) continue;
+        result.splice(low, 0, candidate);
+        if (result.length > RESULT_LIMIT) result.pop();
       }
-      result.sort((a, b) => compareText(pathKey(a), pathKey(b)));
-      result.splice(RESULT_LIMIT);
     }
     memo.set(key, result);
     return result;
@@ -481,7 +496,7 @@ export function findChains(
     .filter(([key, state]) => state.palId === target && distances.get(key) === targetDepth)
     .sort(([, a], [, b]) => compareSex(a.sex, b.sex));
   for (const [key] of targetStates) {
-    for (const transitions of pathsTo(key)) {
+    for (const { transitions } of pathsTo(key)) {
       const steps = transitions.map((transition, index) => ({
         ruleId: transition.ruleId,
         generation: index + 1,
@@ -510,19 +525,6 @@ function compareProduction(index: BreedingIndex, a: Production, b: Production): 
     compareSex(a.parentB.sex, b.parentB.sex) ||
     compareSex(a.child.sex, b.child.sex)
   );
-}
-
-function mergeSteps(...groups: readonly BreedStep[][]): BreedStep[] {
-  const result: BreedStep[] = [];
-  const seen = new Set<string>();
-  for (const step of groups.flat()) {
-    const key = stepKey(step);
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(step);
-    }
-  }
-  return result.sort((a, b) => a.generation - b.generation || compareText(stepKey(a), stepKey(b)));
 }
 
 export function planFromOwned(
@@ -591,7 +593,15 @@ export function planFromOwned(
           const parentA = { palId: rule.parentA, sex: pair.a } satisfies PalState;
           const parentB = { palId: rule.parentB, sex: pair.b } satisfies PalState;
           if (depths.has(stateKey(parentA)) && depths.has(stateKey(parentB))) {
-            entries.push({ ruleId: rule.id, parentA, parentB, child });
+            entries.push({
+              ruleId: rule.id,
+              parentA,
+              parentB,
+              child,
+              parentAKey: stateKey(parentA),
+              parentBKey: stateKey(parentB),
+              childKey: key,
+            });
           }
         }
       }
@@ -601,74 +611,238 @@ export function planFromOwned(
     return entries;
   };
 
-  const memo = new Map<string, InternalPlan[]>();
-  const internalPlanKey = (plan: InternalPlan) =>
-    plan.steps.map((step) => stepKey(step)).join(">");
-  const compareInternalPlan = (a: InternalPlan, b: InternalPlan) =>
-    a.steps.length - b.steps.length ||
-    a.generations - b.generations ||
-    compareText(internalPlanKey(a), internalPlanKey(b));
-  const plansFor = (key: string, budget: number): InternalPlan[] => {
-    if (ownedKeys.has(key)) return [{ generations: 0, steps: [] }];
-    if (budget < 1 || (depths.get(key) ?? Number.POSITIVE_INFINITY) > budget) return [];
-    const memoKey = `${budget}\0${key}`;
-    const cached = memo.get(memoKey);
+  interface SearchNode {
+    rootKey: string;
+    choices: Map<string, Production>;
+    unresolved: Map<string, number>;
+    lowerBound: number;
+    signature: string;
+  }
+
+  const productionSignatures = new WeakMap<Production, string>();
+  const productionSignature = (production: Production) => {
+    const cached = productionSignatures.get(production);
     if (cached) return cached;
-    const result: InternalPlan[] = [];
-    const seen = new Set<string>();
-    for (const production of productionsFor(key)) {
-      const parentAKey = stateKey(production.parentA);
-      const parentBKey = stateKey(production.parentB);
-      if ((depths.get(parentAKey) ?? Number.POSITIVE_INFINITY) >= budget ||
-          (depths.get(parentBKey) ?? Number.POSITIVE_INFINITY) >= budget) continue;
-      for (const left of plansFor(parentAKey, budget - 1)) {
-        for (const right of plansFor(parentBKey, budget - 1)) {
-          const generation = Math.max(left.generations, right.generations) + 1;
-          if (generation > budget) continue;
-          const step: BreedStep = {
-            ruleId: production.ruleId,
-            generation,
-            parentA: {
-              ...production.parentA,
-              origin: ownedKeys.has(stateKey(production.parentA)) ? "owned" : "bred",
-            },
-            parentB: {
-              ...production.parentB,
-              origin: ownedKeys.has(stateKey(production.parentB)) ? "owned" : "bred",
-            },
-            child: { palId: production.child.palId, requiredSex: production.child.sex },
-          };
-          const steps = mergeSteps(left.steps, right.steps, [step]);
-          const signature = `${generation}|${steps.map((item) => stepKey(item)).join(">")}`;
-          if (!seen.has(signature)) {
-            seen.add(signature);
-            result.push({ generations: generation, steps });
+    const { parentAKey, parentBKey } = production;
+    const signature = [
+      production.childKey,
+      String(production.ruleId).padStart(10, "0"),
+      ownedKeys.has(parentAKey) && ownedKeys.has(parentBKey) ? "" : parentAKey,
+      ownedKeys.has(parentAKey) && ownedKeys.has(parentBKey) ? "" : parentBKey,
+    ].join("|");
+    productionSignatures.set(production, signature);
+    return signature;
+  };
+  const choiceSignature = (choices: ReadonlyMap<string, Production>) =>
+    [...choices.values()].map(productionSignature).join(">");
+  const canonicalize = (
+    rootKey: string,
+    inputChoices: ReadonlyMap<string, Production>,
+  ): SearchNode | undefined => {
+    const active = new Map(inputChoices);
+    const budgets = new Map<string, number>();
+    const requests = [{ key: rootKey, budget: targetDepth }];
+    for (let cursor = 0; cursor < requests.length; cursor += 1) {
+      const request = requests[cursor]!;
+      const known = budgets.get(request.key);
+      if (known !== undefined && known <= request.budget) continue;
+      budgets.set(request.key, request.budget);
+      if (ownedKeys.has(request.key) || request.budget < 1) continue;
+      const production = active.get(request.key);
+      if (!production) continue;
+      requests.push(
+        { key: production.parentAKey, budget: request.budget - 1 },
+        { key: production.parentBKey, budget: request.budget - 1 },
+      );
+    }
+    for (const [key, production] of active) {
+      const budget = budgets.get(key);
+      if (budget === undefined || budget < 1 ||
+          (depths.get(production.parentAKey) ?? Number.POSITIVE_INFINITY) >= budget ||
+          (depths.get(production.parentBKey) ?? Number.POSITIVE_INFINITY) >= budget) {
+        // A tighter-feasible production was already a sibling when this state
+        // was expanded. Rejecting the branch keeps child lower bounds monotone.
+        return undefined;
+      }
+    }
+
+    const choices = new Map<string, Production>();
+    const unresolved = new Map<string, number>();
+    for (const [key, budget] of budgets) {
+      if (ownedKeys.has(key)) continue;
+      const production = active.get(key);
+      if (production) choices.set(key, production);
+      else unresolved.set(key, budget);
+    }
+    return {
+      rootKey,
+      choices,
+      unresolved,
+      lowerBound: choices.size + unresolved.size,
+      signature: choiceSignature(choices),
+    };
+  };
+
+  const compareSearchNode = (a: SearchNode, b: SearchNode) =>
+    a.lowerBound - b.lowerBound ||
+    a.choices.size - b.choices.size ||
+    compareText(a.rootKey, b.rootKey) ||
+    compareText(a.signature, b.signature);
+  const queue: SearchNode[] = [];
+  const push = (node: SearchNode) => {
+    queue.push(node);
+    for (let child = queue.length - 1; child > 0;) {
+      const parent = Math.floor((child - 1) / 2);
+      if (compareSearchNode(queue[parent]!, queue[child]!) <= 0) break;
+      [queue[parent], queue[child]] = [queue[child]!, queue[parent]!];
+      child = parent;
+    }
+  };
+  const pop = () => {
+    const first = queue[0]!;
+    const last = queue.pop()!;
+    if (queue.length) {
+      queue[0] = last;
+      for (let parent = 0;;) {
+        const left = parent * 2 + 1;
+        if (left >= queue.length) break;
+        const right = left + 1;
+        const child = right < queue.length && compareSearchNode(queue[right]!, queue[left]!) < 0
+          ? right
+          : left;
+        if (compareSearchNode(queue[parent]!, queue[child]!) <= 0) break;
+        [queue[parent], queue[child]] = [queue[child]!, queue[parent]!];
+        parent = child;
+      }
+    }
+    return first;
+  };
+
+  const feasibleMemo = new Map<string, Production[]>();
+  const feasibleProductions = (key: string, budget: number) => {
+    const memoKey = `${budget}\0${key}`;
+    const cached = feasibleMemo.get(memoKey);
+    if (cached) return cached;
+    const result = productionsFor(key).filter((production) =>
+      (depths.get(production.parentAKey) ?? Number.POSITIVE_INFINITY) < budget &&
+      (depths.get(production.parentBKey) ?? Number.POSITIVE_INFINITY) < budget);
+    feasibleMemo.set(memoKey, result);
+    return result;
+  };
+  const visited = new Set<string>();
+  const enqueue = (
+    rootKey: string,
+    choices: ReadonlyMap<string, Production>,
+    parentLowerBound = 0,
+  ) => {
+    const node = canonicalize(rootKey, choices);
+    if (!node) return;
+    if (node.lowerBound < parentLowerBound) {
+      throw new Error("Inventory search lower bound must be monotone");
+    }
+    const signature = `${rootKey}|${node.signature}`;
+    if (!visited.has(signature)) {
+      visited.add(signature);
+      push(node);
+    }
+  };
+  const targetSex = getPossibleSexes(index.pals.get(target)!)
+    .find((sex) => depths.get(stateKey({ palId: target, sex })) === targetDepth)!;
+  enqueue(stateKey({ palId: target, sex: targetSex }), new Map());
+
+  const plans: BreedPlan[] = [];
+  const completeKeys = new Set<string>();
+  let resultStepLimit = Number.POSITIVE_INFINITY;
+  while (queue.length) {
+    const node = pop();
+    // Equal-bound incomplete nodes have fewer choices, so the heap expands all
+    // of them before complete groups and then emits those groups by signature.
+    if (plans.length >= RESULT_LIMIT && node.lowerBound >= resultStepLimit) break;
+    if (!node.unresolved.size) {
+      const generations = new Map<string, number>();
+      const generationFor = (key: string): number => {
+        if (ownedKeys.has(key)) return 0;
+        const cached = generations.get(key);
+        if (cached !== undefined) return cached;
+        const production = node.choices.get(key)!;
+        const generation = Math.max(
+          generationFor(production.parentAKey),
+          generationFor(production.parentBKey),
+        ) + 1;
+        generations.set(key, generation);
+        return generation;
+      };
+      if (generationFor(node.rootKey) !== targetDepth) continue;
+      let choiceVariants = [node.choices];
+      // Owned parents add no dependency steps; expand their sex directions only
+      // after the canonical production group has reached the result frontier.
+      for (const [key, production] of node.choices) {
+        if (!ownedKeys.has(production.parentAKey) || !ownedKeys.has(production.parentBKey)) continue;
+        const alternatives = productionsFor(key).filter((candidate) =>
+          candidate.ruleId === production.ruleId &&
+          ownedKeys.has(candidate.parentAKey) && ownedKeys.has(candidate.parentBKey));
+        if (alternatives.length < 2) continue;
+        const next: Map<string, Production>[] = [];
+        for (const choices of choiceVariants) {
+          for (const alternative of alternatives) {
+            const variant = new Map(choices);
+            variant.set(key, alternative);
+            next.push(variant);
+            if (next.length === RESULT_LIMIT) break;
+          }
+          if (next.length === RESULT_LIMIT) break;
+        }
+        choiceVariants = next;
+      }
+      for (const choices of choiceVariants) {
+        const steps = [...choices.entries()].map(([key, production]) => ({
+          ruleId: production.ruleId,
+          generation: generationFor(key),
+          parentA: {
+            ...production.parentA,
+            origin: ownedKeys.has(production.parentAKey) ? "owned" as const : "bred" as const,
+          },
+          parentB: {
+            ...production.parentB,
+            origin: ownedKeys.has(production.parentBKey) ? "owned" as const : "bred" as const,
+          },
+          child: key === node.rootKey
+            ? { palId: production.child.palId }
+            : { palId: production.child.palId, requiredSex: production.child.sex },
+        })).sort((a, b) => a.generation - b.generation || compareText(stepKey(a), stepKey(b)));
+        const plan = { generations: targetDepth, steps, warnings: warningsForSteps(steps) } satisfies BreedPlan;
+        const key = planKey(plan);
+        if (!completeKeys.has(key)) {
+          completeKeys.add(key);
+          plans.push(plan);
+          if (plans.length >= RESULT_LIMIT) {
+            resultStepLimit = plans[RESULT_LIMIT - 1]!.steps.length;
+            break;
           }
         }
       }
-      // ponytail: the public API returns 20 plans; keep the same K-best frontier
-      // at each state. Raise RESULT_LIMIT if a larger result surface is added.
-      result.sort(compareInternalPlan);
-      result.splice(RESULT_LIMIT);
+      continue;
     }
-    memo.set(memoKey, result);
-    return result;
-  };
 
-  const plans: BreedPlan[] = [];
-  for (const sex of getPossibleSexes(index.pals.get(target)!)) {
-    const key = stateKey({ palId: target, sex });
-    if (depths.get(key) !== targetDepth) continue;
-    for (const internal of plansFor(key, targetDepth)) {
-      if (internal.generations !== targetDepth) continue;
-      const steps = internal.steps.map((step) => ({
-        ...step,
-        child: step.child.palId === target && step.generation === targetDepth
-          ? { palId: step.child.palId }
-          : step.child,
-      }));
-      plans.push({ generations: internal.generations, steps, warnings: warningsForSteps(steps) });
+    const goal = [...node.unresolved]
+      .map(([key, budget]) => ({ key, budget, productions: feasibleProductions(key, budget) }))
+      .sort((a, b) =>
+        a.productions.length - b.productions.length ||
+        a.budget - b.budget ||
+        compareText(a.key, b.key))[0]!;
+    if (!goal.productions.length) continue;
+    const branchKeys = new Set<string>();
+    for (const production of goal.productions) {
+      const { parentAKey, parentBKey } = production;
+      const branchKey = ownedKeys.has(parentAKey) && ownedKeys.has(parentBKey)
+        ? String(production.ruleId)
+        : `${production.ruleId}|${parentAKey}|${parentBKey}`;
+      if (branchKeys.has(branchKey)) continue;
+      branchKeys.add(branchKey);
+      const choices = new Map(node.choices);
+      choices.set(goal.key, production);
+      enqueue(node.rootKey, choices, node.lowerBound);
     }
   }
-  return uniquePlans(plans);
+  return plans.slice(0, RESULT_LIMIT);
 }

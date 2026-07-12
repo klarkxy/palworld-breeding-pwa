@@ -77,7 +77,7 @@ test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) 
   await expect(page.locator(".collection-card").filter({ hasText: "壶小象" }).getByLabel("♀ 雌")).toBeChecked();
 
   await page.getByRole("link", { name: "路线", exact: true }).click();
-  await page.getByRole("button", { name: /从我的帕鲁规划/ }).click();
+  await page.getByRole("button", { name: /从库存规划/ }).click();
   await choose(page, "目标帕鲁", "SmallArmadillo");
   const elapsed = await page.getByRole("button", { name: "检索最短路线" }).evaluate((element) => {
     const started = performance.now();
@@ -107,7 +107,7 @@ test("@subpath 安装后断网仍能打开计算器和本地数据", async ({ pa
   await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   await context.setOffline(true);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "把配种问题，放上实验台" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "配种计算" })).toBeVisible();
   const offlineSelect = page.locator(".pal-select").first();
   await offlineSelect.locator('input[type="search"]').fill("xsn");
   const offlineOption = offlineSelect.getByRole("listbox").getByRole("option", { name: /吓丝妮/ });

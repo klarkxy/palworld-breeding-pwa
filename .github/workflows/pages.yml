@@ -30,6 +30,10 @@ jobs:
         run: npm run build
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
+      - name: Verify distributed legal files
+        run: |
+          test -s dist/LICENSE.txt
+          test -s dist/THIRD_PARTY_NOTICES.txt
       - name: Verify the Pages sub-path build
         run: npm run test:e2e -- --grep @subpath
         env:
