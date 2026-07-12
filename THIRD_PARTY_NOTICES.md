@@ -4,6 +4,13 @@ This application is unofficial and is not affiliated with Pocketpair. Palworld n
 
 The project's original code is licensed under the Star And Thank Author License (SATA), Version 2.0. That license does not relicense any third-party data or game-related rights listed below.
 
+## pinyin-pro
+
+- Repository: <https://github.com/zh-lx/pinyin-pro>
+- Version: `3.28.1`
+- Use: Chinese-name pinyin-initial generation for local Pal search.
+- License: MIT, Copyright 2022-present zh-lx.
+
 ## PalCalc
 
 - Repository: <https://github.com/tylercamp/palcalc>

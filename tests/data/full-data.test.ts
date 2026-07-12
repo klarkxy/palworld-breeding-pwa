@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildBreedingIndex, getChildren, type BreedRule, type PalRecord } from "../../src/core";
+import { palMatchesSearch, palPinyinInitials } from "../../src/composables/usePalData";
 
 const read = <T>(name: string): T => JSON.parse(readFileSync(resolve("public/data", name), "utf8")) as T;
 const pals = read<{ pals: PalRecord[] }>("paldex.json").pals;
@@ -36,5 +37,14 @@ describe("Palworld 1.0 generated data", () => {
     const reverse = getChildren(index, sample.parentB, sample.parentA)
       .map((match) => `${match.parentBSex}${match.parentASex}:${match.child}`).sort();
     expect(reverse).toEqual(forward);
+  });
+
+  it("indexes every visible Chinese name by pinyin initials", () => {
+    const visible = pals.filter((pal) => pal.selectable);
+    expect(visible.every((pal) => /^[a-z0-9]+$/.test(palPinyinInitials(pal)))).toBe(true);
+    expect(visible.every((pal) => palMatchesSearch(pal, palPinyinInitials(pal)))).toBe(true);
+    expect(palPinyinInitials(visible.find((pal) => pal.id === "OniGhostGirl")!)).toBe("xsn");
+    expect(palPinyinInitials(visible.find((pal) => pal.id === "ClioneTwins")!)).toBe("loln");
+    expect(palPinyinInitials(visible.find((pal) => pal.id === "CubeTurtle")!)).toBe("zyg");
   });
 });

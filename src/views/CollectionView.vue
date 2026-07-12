@@ -4,7 +4,7 @@ import DataState from "@/components/DataState.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalIcon from "@/components/PalIcon.vue";
 import { useCollection } from "@/composables/useCollection";
-import { formatDex, usePalData } from "@/composables/usePalData";
+import { formatDex, palMatchesSearch, usePalData } from "@/composables/usePalData";
 
 const { visiblePals, isLoading, error, load } = usePalData();
 const { entries, cleanedCount, setSex } = useCollection();
@@ -12,14 +12,10 @@ const query = ref("");
 const view = ref<"all" | "owned">("all");
 
 const ownedById = computed(() => new Map(entries.value.map((entry) => [entry.palId, entry])));
-const filteredPals = computed(() => {
-  const needle = query.value.trim().toLocaleLowerCase();
-  return visiblePals.value.filter((pal) => {
-    if (view.value === "owned" && !ownedById.value.has(pal.id)) return false;
-    return !needle || [pal.names.zh, pal.names.en, pal.id, String(pal.dexNo)]
-      .some((value) => value.toLocaleLowerCase().includes(needle));
-  });
-});
+const filteredPals = computed(() => visiblePals.value.filter((pal) => {
+  if (view.value === "owned" && !ownedById.value.has(pal.id)) return false;
+  return palMatchesSearch(pal, query.value);
+}));
 const sexCounts = computed(() => ({
   male: entries.value.filter((entry) => entry.male).length,
   female: entries.value.filter((entry) => entry.female).length,
@@ -39,7 +35,7 @@ const sexCounts = computed(() => ({
       </section>
 
       <div class="filter-bar">
-        <label class="field filter-search"><span class="field__label">搜索帕鲁</span><input v-model="query" type="search" placeholder="中文、English、编号或 ID" /></label>
+        <label class="field filter-search"><span class="field__label">搜索帕鲁</span><input v-model="query" type="search" placeholder="中文 / 拼音首字母 / English / 编号 / ID" /></label>
         <div class="mini-tabs" aria-label="库存筛选">
           <button type="button" :aria-pressed="view === 'all'" :class="{ active: view === 'all' }" @click="view = 'all'">全部</button>
           <button type="button" :aria-pressed="view === 'owned'" :class="{ active: view === 'owned' }" @click="view = 'owned'">已记录</button>

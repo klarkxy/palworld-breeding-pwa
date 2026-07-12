@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from "vue";
 import type { PalId, PalRecord } from "@/core";
-import { elementName, palLabel, workName } from "@/composables/usePalData";
+import { elementName, palLabel, palPinyinInitials, workName } from "@/composables/usePalData";
 
-const { pals, label, hint = "输入中文、英文、编号或内部 ID" } = defineProps<{
+const { pals, label, hint = "中文 / 拼音首字母 / English / 编号 / ID" } = defineProps<{
   pals: readonly PalRecord[];
   label: string;
   hint?: string;
@@ -34,7 +34,10 @@ function commit() {
   const selected = pals.find((pal) => {
     const candidates = [palLabel(pal), pal.id, pal.names.zh, pal.names.en, String(pal.dexNo)];
     return candidates.some((candidate) => candidate.toLocaleLowerCase() === value);
-  });
+  }) ?? (() => {
+    const matches = pals.filter((pal) => palPinyinInitials(pal) === value);
+    return matches.length === 1 ? matches[0] : undefined;
+  })();
   model.value = selected?.id ?? "";
   if (selected) inputValue.value = palLabel(selected);
 }
@@ -60,7 +63,7 @@ watch([() => model.value, () => pals.length], syncFromModel, { immediate: true }
       <button v-if="model" class="icon-button" type="button" aria-label="清除选择" @click="model = ''; inputValue = ''">×</button>
     </span>
     <datalist :id="listId">
-      <option v-for="pal in filteredPals" :key="pal.id" :value="palLabel(pal)" />
+      <option v-for="pal in filteredPals" :key="pal.id" :value="palLabel(pal)" :label="`${palPinyinInitials(pal).toLocaleUpperCase()} · ${pal.names.zh}`" />
     </datalist>
     <details class="pal-select__filters">
       <summary>按属性、工作或亚种筛选</summary>

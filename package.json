@@ -18,6 +18,7 @@
     "check": "npm run validate:data && npm run test && npm run build"
   },
   "dependencies": {
+    "pinyin-pro": "^3.28.1",
     "vue": "^3.5.39",
     "vue-router": "^4.6.4"
   },

@@ -15,12 +15,18 @@ async function choose(page: Page, label: string, palId: string) {
 
 test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await openApp(page, "/breeding");
-  await choose(page, "亲本 A", "OniGhostGirl");
-  await choose(page, "亲本 B", "Ganesha");
+  await expect(page.locator(".pal-select").filter({ hasText: "亲本 A" }).locator('option[label^="XSN"]')).toHaveCount(1);
+  await choose(page, "亲本 A", "xsn");
+  await choose(page, "亲本 B", "hxx");
   await expect(page.locator(".recipe-row").first()).toContainText("球犰");
 
   await page.getByRole("button", { name: /A ＋ \? ＝ B/ }).click();
   await choose(page, "亲本 A", "OniGhostGirl");
+  const targetSelect = page.locator(".pal-select").filter({ hasText: "目标子代 B" });
+  await expect(targetSelect.locator('option[label^="QQ"]')).toHaveCount(2);
+  await targetSelect.locator('input[type="search"]').fill("qq");
+  await targetSelect.locator('input[type="search"]').press("Tab");
+  await expect(targetSelect.getByRole("button", { name: "清除选择" })).toHaveCount(0);
   await choose(page, "目标子代 B", "SmallArmadillo");
   await expect(page.locator(".recipe-row").first()).toContainText("壶小象");
 
@@ -28,14 +34,17 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(page.locator(".recipe-row").first()).toBeVisible();
 
   await page.getByRole("link", { name: "图鉴" }).click();
-  await page.getByLabel("搜索图鉴").fill("SmallArmadillo");
+  await page.getByLabel("搜索图鉴").fill("xsn");
   await expect(page.locator(".paldex-card")).toHaveCount(1);
   await page.locator(".paldex-card").click();
-  await expect(page.getByRole("heading", { name: "球犰", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "吓丝妮", level: 1 })).toBeVisible();
 });
 
 test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) => {
   await openApp(page, "/collection");
+  await page.getByLabel("搜索帕鲁").fill("xsn");
+  await expect(page.locator(".collection-card")).toHaveCount(1);
+  await page.getByLabel("搜索帕鲁").fill("");
   const oni = page.locator(".collection-card").filter({ hasText: "吓丝妮" });
   const ganesha = page.locator(".collection-card").filter({ hasText: "壶小象" });
   await oni.getByLabel("♂ 雄").focus();

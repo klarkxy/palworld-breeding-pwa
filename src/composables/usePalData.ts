@@ -1,4 +1,5 @@
 import { computed, readonly, ref, shallowRef } from "vue";
+import { pinyin } from "pinyin-pro";
 import { buildBreedingIndex } from "@/core";
 import type { BreedRule, BreedingIndex, PalId, PalRecord } from "@/core";
 
@@ -74,6 +75,18 @@ export function formatDex(pal: PalRecord) {
 
 export function palLabel(pal: PalRecord) {
   return `${pal.names.zh} · ${pal.names.en} · ${formatDex(pal)} · ${pal.id}`;
+}
+
+export function palPinyinInitials(pal: PalRecord) {
+  return pinyin(pal.names.zh, {
+    pattern: "first", toneType: "none", type: "array", nonZh: "removed",
+  }).join("").toLocaleLowerCase();
+}
+
+export function palMatchesSearch(pal: PalRecord, query: string) {
+  const needle = query.trim().toLocaleLowerCase();
+  return !needle || [pal.names.zh, pal.names.en, pal.id, String(pal.dexNo), palPinyinInitials(pal)]
+    .some((value) => value.toLocaleLowerCase().includes(needle));
 }
 
 const elementNames: Record<string, string> = {
