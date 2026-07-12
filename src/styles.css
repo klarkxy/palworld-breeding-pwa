@@ -59,7 +59,11 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .main-nav a { display: grid; justify-items: center; gap: .15rem; padding: .5rem .25rem; border-radius: 1rem; color: var(--ink-soft); font-size: .7rem; font-weight: 700; text-decoration: none; }
 .main-nav a span { font: 700 1.15rem/1 var(--utility); }
 .main-nav a.router-link-active { color: var(--sky-700); background: var(--sky-100); }
+.header-actions { display: flex; align-items: center; gap: .5rem; }
 .data-version { display: none; font: 700 .7rem var(--utility); color: var(--sky-700); }
+.issue-link { display: inline-flex; align-items: center; justify-content: center; gap: .3rem; min-height: 2.75rem; padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.7); color: var(--ink); font: 800 .65rem/1 var(--utility); text-decoration: none; }
+.issue-link:hover { border-color: var(--sky-500); background: white; }
+.issue-link svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
 
 .page-shell { width: min(72rem, calc(100% - 2rem)); min-height: 70vh; margin: 0 auto; padding: 2.6rem 0 4rem; }
 .page-intro { max-width: 47rem; margin-bottom: 1.9rem; }

@@ -42,7 +42,20 @@ watch([manifest, pals], ([nextManifest, nextPals]) => {
     <nav class="main-nav" aria-label="主要导航">
       <RouterLink v-for="item in navigation" :key="item.to" :to="item.to"><span aria-hidden="true">{{ item.icon }}</span>{{ item.label }}</RouterLink>
     </nav>
-    <span v-if="manifest" class="data-version">数据 {{ manifest.gameVersion }}</span>
+    <div class="header-actions">
+      <span v-if="manifest" class="data-version">数据 {{ manifest.gameVersion }}</span>
+      <a
+        class="issue-link"
+        href="https://github.com/klarkxy/palworld-breeding-pwa/issues/new"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="在 GitHub 提交 Issue（新窗口）"
+        title="在 GitHub 提交 Issue"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.87c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.6 9.6 0 0 1 12 6.82a9.6 9.6 0 0 1 2.5.34c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z" /></svg>
+        <span>提 Issue</span>
+      </a>
+    </div>
   </header>
 
   <div id="main-view"><RouterView v-slot="{ Component }"><Transition name="page" mode="out-in"><component :is="Component" /></Transition></RouterView></div>
