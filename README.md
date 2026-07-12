@@ -16,6 +16,26 @@
 
 本项目没有账号、后端或云同步。清除该站点的浏览器数据、使用另一台设备/浏览器，或更换部署域名时，收藏不会自动迁移。
 
+## 数据来源
+
+当前静态快照对应游戏 `1.0`、数据版本 `palworld-1.0-palcalc-v23`：306 条内部帕鲁记录（其中 288 条可选）、46,972 条原始配种规则（其中 41,550 条可用于可选帕鲁）、303 张游戏图标和 3 张隐藏记录占位图。精确上游版本、生成时间、数量和 SHA-256 校验值记录在 [`public/data/manifest.json`](./public/data/manifest.json)。
+
+| 本项目数据 | 直接来源与固定版本 | 使用方式 |
+|---|---|---|
+| 内部 ID、图鉴编号、亚种、中英名称、配种力、内部顺序、雄性概率、基础数值、工作适应性、主动技能显示名 | [PalCalc `db.json`](https://github.com/tylercamp/palcalc/blob/b5e13e90fedc2e95d54fa223da77be464c313001/PalCalc.Model/db.json)，`v1.17.2` / commit [`b5e13e9`](https://github.com/tylercamp/palcalc/commit/b5e13e90fedc2e95d54fa223da77be464c313001)，blob `c9a010f3c4a93957251b6d5d1b9bc1b244256200` | 作为帕鲁身份、配种属性和基础图鉴字段的主来源。 |
+| 父母、子代和父母性别限制 | [PalCalc `breeding.json`](https://github.com/tylercamp/palcalc/blob/b5e13e90fedc2e95d54fa223da77be464c313001/PalCalc.Model/breeding.json)，同一固定版本，blob `2dc04d319bc2de89691031a0a4456aaa55882461` | 作为 46,972 条配种规则的唯一真值；通配性别仅在本地展开为 `M+F` 与 `F+M`。 |
+| 属性、按等级排列的主动技能集合、亚种复用伙伴技能时使用的 `tribe` 关联 | [palworld-save-pal `pals.json`](https://github.com/oMaN-Rod/palworld-save-pal/blob/e46188978a13e74d84c9a1ce5569497ee0555cae/data/json/pals.json) 及[简中](https://github.com/oMaN-Rod/palworld-save-pal/blob/e46188978a13e74d84c9a1ce5569497ee0555cae/data/json/l10n/zh-Hans/active_skills.json)/[英文](https://github.com/oMaN-Rod/palworld-save-pal/blob/e46188978a13e74d84c9a1ce5569497ee0555cae/data/json/l10n/en/active_skills.json)主动技能表，commit [`e461889`](https://github.com/oMaN-Rod/palworld-save-pal/commit/e46188978a13e74d84c9a1ce5569497ee0555cae) | 技能名称优先使用 PalCalc 本地化；PalCalc 缺项时才回退到这里的本地化名称。 |
+| 伙伴技能标题 | [PalModding/UtililityFiles `DT_SkillNameText_Common.json`](https://github.com/PalModding/UtililityFiles/blob/455de2110d8414f703699204f33cb6ac052a3f98/Json%27s/DataTable/Text/DT_SkillNameText_Common.json)，commit [`455de21`](https://github.com/PalModding/UtililityFiles/commit/455de2110d8414f703699204f33cb6ac052a3f98)，blob `25a3f5510c4a1b0304d1e31bb172bae21ae2bcb7` | 为全部 306 条记录提供标题；6 个视觉/任务变体通过 Save Pal 的 `tribe` 复用本体行。当前源表是日文，本站原样保留。 |
+| 配种数据独立校验 | [pal-breeding-calculator `palworld-1.0.json`](https://github.com/ZiSangMuZhi/pal-breeding-calculator/blob/e0fca5b22c2a4905b725c2ed988e6ef7c1914b8c/src/data/palworld-1.0.json)，release `v1.0.0` / commit [`e0fca5b`](https://github.com/ZiSangMuZhi/pal-breeding-calculator/commit/e0fca5b22c2a4905b725c2ed988e6ef7c1914b8c)，blob `e629e284587c3e4f38d5efc834479c75307a5548` | 逐条核对 306 个身份和 46,972 条规则；不作为运行时数据源。 |
+| 帕鲁头像 | [PalCalc `PalCalc.UI/Resources/Pals`](https://github.com/tylercamp/palcalc/tree/b5e13e90fedc2e95d54fa223da77be464c313001/PalCalc.UI/Resources/Pals)，同一固定版本 | 303 张 100×100 PNG 按内部 ID 重命名；缺图的 3 条隐藏内部记录（`BlackFurDragon`、`POLICE_HawkBird`、`POLICE_ThunderDog`）由本项目生成 SVG 占位图，不会出现在图鉴选择器中。 |
+| 拼音首字母 | 帕鲁简中名称 + [`pinyin-pro` 3.28.1](https://www.npmjs.com/package/pinyin-pro/v/3.28.1) | 仅在浏览器中生成搜索索引，不修改静态帕鲁数据。 |
+
+三个发布数据文件均由 [`scripts/generate_data.py`](./scripts/generate_data.py) 从上述固定快照生成：[`breeding.json`](./public/data/breeding.json) 保存帕鲁记录和全部规则，[`paldex.json`](./public/data/paldex.json) 保存同一份帕鲁记录，[`manifest.json`](./public/data/manifest.json) 保存来源、数量与校验值。属性/工作类别的简中标签、`selectable` 标记、规则性别展开和 3 张占位图属于本项目的确定性派生结果；“我的帕鲁”则完全来自用户在当前浏览器中的本地输入。
+
+已知源数据缺口：固定的 palworld-save-pal 快照未给 `LazyCatfish`、`LazyCatfish_Gold`、`GhostAnglerfish`、`GhostAnglerfish_Fire` 提供主动技能集合，本站对这四条显示为空，不猜测补全。
+
+这些项目的开源许可仅适用于各自代码，不会重新授权《幻兽帕鲁》的名称、数据或游戏衍生图标；相关权利仍归 Pocketpair。完整许可与权利说明见 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)。
+
 ## 本地开发
 
 ```powershell
@@ -45,7 +65,7 @@ npm run validate:data
 
 仓库自带 [Pages 工作流](./.github/workflows/pages.yml)。推送到 `main` 后，它会依次执行数据校验、单元测试、构建、Chromium 端到端/离线测试，再以仓库子路径部署静态站点。Vite、PWA 清单和服务工作线程的资源路径都由 `VITE_BASE_PATH` 对齐仓库名。
 
-数据来源、更新方式与权利说明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
+更完整的第三方许可与权利说明见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
 
 本项目是非官方同人工具，与 Pocketpair 无关联。
 
