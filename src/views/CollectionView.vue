@@ -7,30 +7,24 @@ import { useCollection } from "@/composables/useCollection";
 import { formatDex, palMatchesSearch, usePalData } from "@/composables/usePalData";
 
 const { visiblePals, isLoading, error, load } = usePalData();
-const { entries, cleanedCount, setSex } = useCollection();
+const { entries, cleanedCount, setOwned } = useCollection();
 const query = ref("");
 const view = ref<"all" | "owned">("all");
 
-const ownedById = computed(() => new Map(entries.value.map((entry) => [entry.palId, entry])));
+const ownedIds = computed(() => new Set(entries.value.map((entry) => entry.palId)));
 const filteredPals = computed(() => visiblePals.value.filter((pal) => {
-  if (view.value === "owned" && !ownedById.value.has(pal.id)) return false;
+  if (view.value === "owned" && !ownedIds.value.has(pal.id)) return false;
   return palMatchesSearch(pal, query.value);
-}));
-const sexCounts = computed(() => ({
-  male: entries.value.filter((entry) => entry.male).length,
-  female: entries.value.filter((entry) => entry.female).length,
 }));
 </script>
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="我的帕鲁" title="库存管理" description="记录物种和已有性别；路径规划会自动使用这份清单。" />
+    <PageIntro eyebrow="我的帕鲁" title="库存管理" description="只记录拥有的物种；路径规划会自动使用这份清单。" />
     <DataState :is-loading :error @retry="load">
       <p v-if="cleanedCount" class="notice">数据已升级，自动移除了 {{ cleanedCount }} 条失效记录。</p>
       <section class="collection-summary" aria-label="库存概览">
-        <div><strong>{{ entries.length }}</strong><span>种帕鲁</span></div>
-        <div><strong>{{ sexCounts.male }}</strong><span>雄性记录</span></div>
-        <div><strong>{{ sexCounts.female }}</strong><span>雌性记录</span></div>
+        <div><strong>{{ entries.length }}</strong><span>种已拥有帕鲁</span></div>
         <RouterLink class="button button--primary" to="/paths">用库存规划路线</RouterLink>
       </section>
 
@@ -44,15 +38,14 @@ const sexCounts = computed(() => ({
 
       <p class="result-note">显示 {{ filteredPals.length }} 种，勾选即保存。</p>
       <ul class="collection-grid">
-        <li v-for="pal in filteredPals" :key="pal.id" class="collection-card" :class="{ 'collection-card--owned': ownedById.has(pal.id) }">
+        <li v-for="pal in filteredPals" :key="pal.id" class="collection-card" :class="{ 'collection-card--owned': ownedIds.has(pal.id) }">
           <RouterLink :to="`/paldex/${encodeURIComponent(pal.id)}`" class="collection-card__identity">
             <PalIcon :pal />
             <span><strong>{{ pal.names.zh }}</strong><small>{{ formatDex(pal) }} · {{ pal.names.en }}</small></span>
           </RouterLink>
           <fieldset>
-            <legend class="sr-only">{{ pal.names.zh }} 已有性别</legend>
-            <label class="sex-toggle sex-toggle--male"><input type="checkbox" :checked="ownedById.get(pal.id)?.male ?? false" @change="setSex(pal.id, 'male', ($event.target as HTMLInputElement).checked)" /><span>♂ 雄</span></label>
-            <label class="sex-toggle sex-toggle--female"><input type="checkbox" :checked="ownedById.get(pal.id)?.female ?? false" @change="setSex(pal.id, 'female', ($event.target as HTMLInputElement).checked)" /><span>♀ 雌</span></label>
+            <legend class="sr-only">{{ pal.names.zh }}库存状态</legend>
+            <label class="owned-toggle"><input type="checkbox" :aria-label="`${pal.names.zh}已拥有`" :checked="ownedIds.has(pal.id)" @change="setOwned(pal.id, ($event.target as HTMLInputElement).checked)" /><span>已拥有</span></label>
           </fieldset>
         </li>
       </ul>

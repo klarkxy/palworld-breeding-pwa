@@ -122,7 +122,7 @@ function closeDetail() {
                 <div><h2>{{ pal.names.zh }}</h2><p>{{ pal.names.en }}</p></div>
                 <span class="dex-stamp">No. {{ formatDex(pal).slice(1) }}</span>
               </div>
-              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="mountTechnologyLabel(pal)" class="tag mount-tech-badge">{{ mountTechnologyLabel(pal) }}</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种雄性与雌性帕鲁产出">仅可自交</span></div>
+              <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="mountTechnologyLabel(pal)" class="tag mount-tech-badge">{{ mountTechnologyLabel(pal) }}</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种帕鲁产出">仅可自交</span></div>
               <div v-if="sortKey !== 'dex'" class="paldex-card__sort-value"><span>{{ selectedSort.label.replace(/（.*$/, "") }}</span><strong>{{ formatSortValue(pal) }}</strong></div>
               <div class="paldex-card__work">
                 <span class="paldex-card__work-label">工作适应性</span>

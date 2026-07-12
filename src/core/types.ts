@@ -108,8 +108,6 @@ export interface BreedRule {
 
 export interface OwnedEntry {
   palId: PalId;
-  male: boolean;
-  female: boolean;
 }
 
 export interface PairSexFilter {
@@ -167,7 +165,6 @@ export interface BreedPlan {
 
 export type ChainStart =
   | PalId
-  | OwnedEntry
   | { palId: PalId; sex: Sex };
 
 export interface BreedingIndex {

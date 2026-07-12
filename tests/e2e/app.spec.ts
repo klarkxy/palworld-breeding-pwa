@@ -15,6 +15,8 @@ async function choose(page: Page, label: string, palId: string) {
 
 test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await openApp(page, "/breeding");
+  await expect(page.locator(".pal-select__filters")).toHaveCount(0);
+  await expect(page.getByText(/亲本 [AB] 性别|已有性别/)).toHaveCount(0);
   const parentASelect = page.locator(".pal-select").filter({ hasText: "亲本 A" });
   const parentAInput = parentASelect.locator('input[type="search"]');
   await parentAInput.fill("xsn");
@@ -32,7 +34,10 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await parentBInput.press("ArrowDown");
   await parentBInput.press("Enter");
   await expect(parentBInput).toHaveValue(/壶小象/);
-  await expect(page.locator(".recipe-row").first()).toContainText("球犰");
+  const firstRecipe = page.locator(".recipe-row").first();
+  await expect(page.locator(".recipe-row")).toHaveCount(1);
+  await expect(firstRecipe).toContainText("球犰");
+  await expect(firstRecipe).not.toContainText(/[♂♀]|雄性|雌性/);
 
   await page.getByRole("button", { name: /A ＋ \? ＝ B/ }).click();
   await choose(page, "亲本 A", "OniGhostGirl");
@@ -137,21 +142,43 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
 
 test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) => {
   await openApp(page, "/collection");
-  await page.getByLabel("搜索帕鲁").fill("xsn");
-  await expect(page.locator(".collection-card")).toHaveCount(1);
-  await page.getByLabel("搜索帕鲁").fill("");
-  const oni = page.locator(".collection-card").filter({ hasText: "吓丝妮" });
-  const ganesha = page.locator(".collection-card").filter({ hasText: "壶小象" });
-  await oni.getByLabel("♂ 雄").focus();
-  await oni.getByLabel("♂ 雄").press("Space");
-  await ganesha.getByLabel("♀ 雌").focus();
-  await ganesha.getByLabel("♀ 雌").press("Space");
+  await page.evaluate(() => localStorage.setItem("pal-lab.collection.v1", JSON.stringify({
+    schema: 1,
+    dataVersion: "legacy",
+    entries: [
+      { palId: "OniGhostGirl", male: true, female: false },
+      { palId: "Ganesha", male: false, female: true },
+    ],
+  })));
   await page.reload();
   await expect(page.locator(".data-version")).toContainText("1.0");
-  await expect(page.locator(".collection-card").filter({ hasText: "吓丝妮" }).getByLabel("♂ 雄")).toBeChecked();
-  await expect(page.locator(".collection-card").filter({ hasText: "壶小象" }).getByLabel("♀ 雌")).toBeChecked();
+  await page.getByLabel("搜索帕鲁").fill("xsn");
+  await expect(page.locator(".collection-card")).toHaveCount(1);
+  const oni = page.locator(".collection-card").filter({ hasText: "吓丝妮" });
+  await expect(oni.getByRole("checkbox")).toHaveCount(1);
+  await expect(oni.getByLabel("吓丝妮已拥有")).toBeChecked();
+  await page.getByLabel("搜索帕鲁").fill("");
+  const ganesha = page.locator(".collection-card").filter({ hasText: "壶小象" });
+  await expect(ganesha.getByRole("checkbox")).toHaveCount(1);
+  await expect(ganesha.getByLabel("壶小象已拥有")).toBeChecked();
+  await expect(page.getByText(/雄性记录|雌性记录|已有性别/)).toHaveCount(0);
+
+  const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("pal-lab.collection.v1") ?? "null") as {
+    schema: number;
+    entries: Record<string, unknown>[];
+  });
+  expect(migrated.schema).toBe(2);
+  expect(migrated.entries).toEqual([{ palId: "OniGhostGirl" }, { palId: "Ganesha" }]);
+  expect(migrated.entries.every((entry) => Object.keys(entry).length === 1)).toBe(true);
+
+  await page.reload();
+  await expect(page.locator(".data-version")).toContainText("1.0");
+  await expect(page.locator(".collection-card").filter({ hasText: "吓丝妮" }).getByLabel("吓丝妮已拥有")).toBeChecked();
+  await expect(page.locator(".collection-card").filter({ hasText: "壶小象" }).getByLabel("壶小象已拥有")).toBeChecked();
 
   await page.getByRole("link", { name: "路线", exact: true }).click();
+  await expect(page.getByText("已有性别")).toHaveCount(0);
+  await expect(page.locator(".pal-select__filters")).toHaveCount(0);
   await page.getByRole("button", { name: /从库存规划/ }).click();
   await choose(page, "目标帕鲁", "SmallArmadillo");
   const elapsed = await page.getByRole("button", { name: "检索最短路线" }).evaluate((element) => {
@@ -159,7 +186,9 @@ test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) 
     (element as HTMLButtonElement).click();
     return performance.now() - started;
   });
-  await expect(page.locator(".plan-card").first()).toContainText("1 代 · 1 次配种");
+  const firstPlan = page.locator(".plan-card").first();
+  await expect(firstPlan).toContainText("1 代 · 1 次配种");
+  await expect(firstPlan).not.toContainText(/[♂♀]|雄性|雌性/);
   expect(elapsed).toBeLessThan(1_000);
 });
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { findChains, planFromOwned } from "@/core";
-import type { BreedPlan, Sex } from "@/core";
+import type { BreedPlan } from "@/core";
 import BreedPlanCard from "@/components/BreedPlanCard.vue";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
@@ -14,7 +14,6 @@ const { visiblePals, palById, index, isLoading, error, load } = usePalData();
 const { entries } = useCollection();
 const mode = ref<"single" | "owned">("single");
 const start = ref("");
-const startSex = ref<Sex | "">("");
 const target = ref("");
 const maxDepth = ref(5);
 const plans = ref<BreedPlan[]>([]);
@@ -28,8 +27,7 @@ function search() {
   }
   if (mode.value === "single") {
     if (!start.value) return void (plans.value = []);
-    const chainStart = startSex.value ? { palId: start.value, sex: startSex.value } : start.value;
-    plans.value = findChains(index.value, chainStart, target.value, maxDepth.value);
+    plans.value = findChains(index.value, start.value, target.value, maxDepth.value);
   } else {
     plans.value = planFromOwned(index.value, entries.value, target.value, maxDepth.value);
   }
@@ -53,7 +51,6 @@ function search() {
         <div class="route-form__grid">
           <div v-if="mode === 'single'" class="parent-field">
             <PalSelect v-model="start" :pals="visiblePals" label="起点帕鲁" />
-            <label class="field field--compact"><span class="field__label">已有性别</span><select v-model="startSex"><option value="">不限</option><option value="M">♂ 雄性</option><option value="F">♀ 雌性</option></select></label>
           </div>
           <div v-else class="inventory-summary">
             <strong>{{ entries.length }}</strong><span>种已记录帕鲁</span>
@@ -71,7 +68,7 @@ function search() {
       <section class="results-section" aria-live="polite">
         <header class="section-heading"><div><p class="eyebrow">路线结果</p><h2>{{ hasSearched ? `${plans.length} 个最短方案` : "还没有开始检索" }}</h2></div></header>
         <div v-if="!hasSearched" class="empty-state"><span aria-hidden="true">⌇</span><p>选定起点与目标，按代展开路线。</p></div>
-        <div v-else-if="!plans.length" class="empty-state"><span aria-hidden="true">∅</span><p>{{ mode === "owned" && !entries.length ? '先到"我的帕鲁"记录至少一雄一雌。' : "代数范围内没有路线，试试增加上限。" }}</p></div>
+        <div v-else-if="!plans.length" class="empty-state"><span aria-hidden="true">∅</span><p>{{ mode === "owned" && !entries.length ? '先到"我的帕鲁"记录至少一种帕鲁。' : "代数范围内没有路线，试试增加上限。" }}</p></div>
         <div v-else class="plan-list">
           <p v-if="plans.length === 20" class="notice">按最少代数排序，仅显示前 20 条。</p>
           <BreedPlanCard v-for="(plan, i) in plans" :key="i" :plan :pal-by-id :number="i + 1" />

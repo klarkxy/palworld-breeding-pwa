@@ -7,15 +7,21 @@ import {
   getParentPairs,
   planFromOwned,
   type BreedRule,
+  type OwnedEntry,
 } from "../../src/core";
 import { pal, pals, rules } from "./fixture";
 
 const index = buildBreedingIndex(pals, rules);
+const own = (...palIds: string[]): OwnedEntry[] => palIds.map((palId) => ({ palId }));
 
 describe("breeding queries", () => {
-  it("expands ordinary sex pairs and keeps gender-specific results for the same parents", () => {
+  it("expands ordinary low-level sex pairs and keeps gender-specific results for the same parents", () => {
     expect(getChildren(index, "A", "A").map((match) => match.parentASex + match.parentBSex))
       .toEqual(["MF", "FM"]);
+    expect(getChildren(index, "A", "A", { a: "M", b: "F" })
+      .map((match) => match.parentASex + match.parentBSex)).toEqual(["MF"]);
+    expect(getChildren(index, "A", "A", { a: "F", b: "M" })
+      .map((match) => match.parentASex + match.parentBSex)).toEqual(["FM"]);
 
     expect(getChildren(index, "A", "B").map(({ child }) => child)).toEqual(["C", "D"]);
     expect(getChildren(index, "A", "B", { a: "M", b: "F" }).map(({ child }) => child))
@@ -24,7 +30,7 @@ describe("breeding queries", () => {
       .toEqual(["C"]);
   });
 
-  it("finds a fixed parent's mates and filters target pairs by exact owned genders", () => {
+  it("finds a fixed parent's mates and filters target pairs by owned species", () => {
     expect(findMates(index, "A", "C", "M")).toEqual([{
       ruleId: 1,
       parent: "A",
@@ -34,14 +40,8 @@ describe("breeding queries", () => {
       child: "C",
     }]);
 
-    expect(getParentPairs(index, "C", [
-      { palId: "A", male: true, female: false },
-      { palId: "B", male: false, female: true },
-    ])).toHaveLength(1);
-    expect(getParentPairs(index, "C", [
-      { palId: "A", male: false, female: true },
-      { palId: "B", male: false, female: true },
-    ])).toEqual([]);
+    expect(getParentPairs(index, "C", own("A", "B"))).toHaveLength(1);
+    expect(getParentPairs(index, "C", own("A"))).toEqual([]);
   });
 });
 
@@ -64,7 +64,7 @@ describe("shortest paths", () => {
     expect(findChains(index, "A", "A")).toEqual([{ generations: 0, steps: [], warnings: [] }]);
   });
 
-  it("rejects a starting or owned gender that the species cannot produce", () => {
+  it("rejects an impossible explicit start gender and derives inventory genders from species", () => {
     const singleSexIndex = buildBreedingIndex(
       [pal("OnlyF", 0, -0.01), pal("MateM", 1, 1.01), pal("Child", 2)],
       [{
@@ -77,10 +77,10 @@ describe("shortest paths", () => {
     );
 
     expect(findChains(singleSexIndex, { palId: "OnlyF", sex: "M" }, "Child", 1)).toEqual([]);
-    expect(planFromOwned(singleSexIndex, [
-      { palId: "OnlyF", male: true, female: false },
-      { palId: "MateM", male: true, female: false },
-    ], "Child", 1)).toEqual([]);
+    const plans = planFromOwned(singleSexIndex, own("OnlyF", "MateM"), "Child", 1);
+    expect(plans).toHaveLength(1);
+    expect(plans[0]!.steps[0]!.parentA.sex).toBe("F");
+    expect(plans[0]!.steps[0]!.parentB.sex).toBe("M");
   });
 
   it("returns at most 20 direct routes in stable order", () => {
@@ -103,12 +103,7 @@ describe("shortest paths", () => {
 
 describe("owned collection planning", () => {
   it("combines two independently bred parents as an AND graph", () => {
-    const plans = planFromOwned(index, [
-      { palId: "A", male: true, female: false },
-      { palId: "B", male: false, female: true },
-      { palId: "D", male: true, female: false },
-      { palId: "E", male: false, female: true },
-    ], "G", 5);
+    const plans = planFromOwned(index, own("A", "B", "D", "E"), "G", 5);
     expect(plans).toHaveLength(1);
     const plan = plans[0]!;
 
@@ -121,29 +116,22 @@ describe("owned collection planning", () => {
     expect(plan.steps.at(-1)?.parentB.origin).toBe("bred");
   });
 
-  it("fails cleanly when a required gender or generation is unavailable", () => {
-    expect(planFromOwned(index, [
-      { palId: "A", male: false, female: true },
-      { palId: "B", male: false, female: true },
-    ], "C", 5)).toEqual([]);
-    expect(planFromOwned(index, [
-      { palId: "A", male: true, female: false },
-      { palId: "B", male: false, female: true },
-      { palId: "D", male: true, female: false },
-      { palId: "E", male: false, female: true },
-    ], "G", 1)).toEqual([]);
+  it("fails cleanly when inventory or generations are insufficient", () => {
+    expect(planFromOwned(index, own("A"), "C", 5)).toEqual([]);
+    expect(planFromOwned(index, own("A", "B", "D", "E"), "G", 1)).toEqual([]);
   });
 
   it("returns a zero-step plan when the target is already owned", () => {
-    expect(planFromOwned(index, [{ palId: "G", male: true, female: false }], "G"))
+    expect(planFromOwned(index, own("G"), "G"))
       .toEqual([{ generations: 0, steps: [], warnings: [] }]);
   });
 
-  it("does not duplicate a final plan for the target's hatch sex", () => {
-    expect(planFromOwned(index, [
-      { palId: "A", male: true, female: false },
-      { palId: "B", male: false, female: true },
-    ], "C", 1)).toHaveLength(1);
+  it("does not duplicate ordinary sex directions or the target's hatch sex", () => {
+    const ordinaryIndex = buildBreedingIndex(
+      [pal("P", 0), pal("Q", 1), pal("T", 2)],
+      [{ id: 1, parentA: "P", parentB: "Q", child: "T", allowedSexPairs: [] }],
+    );
+    expect(planFromOwned(ordinaryIndex, own("P", "Q"), "T", 1)).toHaveLength(1);
   });
 
   it("returns the stable first 20 inventory plans", () => {
@@ -156,10 +144,7 @@ describe("owned collection planning", () => {
       allowedSexPairs: [{ a: "M", b: "F" }],
     }));
     const manyIndex = buildBreedingIndex([pal("S", 0), ...matePals, pal("T", 99)], manyRules);
-    const owned = [
-      { palId: "S", male: true, female: false },
-      ...matePals.map((mate) => ({ palId: mate.id, male: false, female: true })),
-    ];
+    const owned = own("S", ...matePals.map((mate) => mate.id));
     const plans = planFromOwned(manyIndex, owned, "T", 1);
     expect(plans).toHaveLength(20);
     expect(plans.map((plan) => plan.steps[0]!.ruleId)).toEqual(
@@ -183,17 +168,10 @@ describe("owned collection planning", () => {
     }));
     const ids = [...new Set(ruleDefs.flat())];
     const tieIndex = buildBreedingIndex(ids.map((id, palIndex) => pal(id, palIndex)), tieRules);
-    const ownedSexes = [
-      ["A", "M"], ["B", "F"], ["C", "M"], ["D", "F"], ["E", "M"], ["F", "F"],
-      ["G", "M"], ["H", "F"], ["I", "M"], ["J", "F"], ["L", "F"], ["N", "F"],
-      ["W", "F"], ["I2", "M"], ["J2", "F"], ["L2", "F"], ["N2", "F"], ["W2", "F"],
-    ] as const;
-
-    const tied = planFromOwned(tieIndex, ownedSexes.map(([palId, sex]) => ({
-      palId,
-      male: sex === "M",
-      female: sex === "F",
-    })), "T", 5);
+    const tied = planFromOwned(tieIndex, own(
+      "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "L", "N", "W",
+      "I2", "J2", "L2", "N2", "W2",
+    ), "T", 5);
 
     expect(tied.slice(0, 2).map((plan) => [plan.generations, plan.steps.length]))
       .toEqual([[5, 9], [5, 12]]);
@@ -212,12 +190,7 @@ describe("owned collection planning", () => {
       ["A", "B", "C", "D", "X", "Y", "T"].map((id, i) => pal(id, i)),
       layerRules,
     );
-    const layerPlans = planFromOwned(layerIndex, [
-      { palId: "A", male: true, female: false },
-      { palId: "B", male: false, female: true },
-      { palId: "C", male: true, female: false },
-      { palId: "D", male: false, female: true },
-    ], "T", 5);
+    const layerPlans = planFromOwned(layerIndex, own("A", "B", "C", "D"), "T", 5);
 
     expect(layerPlans.map((plan) => plan.steps.at(-1)?.ruleId)).toEqual([3, 4]);
     expect(layerPlans.every((plan) => plan.generations === 2)).toBe(true);
@@ -226,16 +199,12 @@ describe("owned collection planning", () => {
   it("keeps a locally later route when shared steps make it globally best", () => {
     const ids = new Set<string>();
     const sharedRules: BreedRule[] = [];
-    const owned: { palId: string; male: boolean; female: boolean }[] = [];
+    const owned: OwnedEntry[] = [];
     for (let i = 1; i <= 21; i += 1) {
       const suffix = String(i).padStart(2, "0");
       const [a, b, x, c] = [`A${suffix}`, `B${suffix}`, `X${suffix}`, `C${suffix}`];
       for (const id of [a, b, x, c]) ids.add(id);
-      owned.push(
-        { palId: a, male: true, female: false },
-        { palId: b, male: false, female: true },
-        { palId: c, male: false, female: true },
-      );
+      owned.push(...own(a, b, c));
       sharedRules.push({
         id: i,
         parentA: a,
@@ -245,7 +214,7 @@ describe("owned collection planning", () => {
       });
     }
     for (const id of ["D", "P", "Q", "T"]) ids.add(id);
-    owned.push({ palId: "D", male: false, female: true });
+    owned.push(...own("D"));
     for (let i = 1; i <= 21; i += 1) {
       const suffix = String(i).padStart(2, "0");
       sharedRules.push({
@@ -274,14 +243,11 @@ describe("owned collection planning", () => {
 
   it("uses canonical production choices as the stable equal-cost tie order", () => {
     const tiePals = ["P", "Q", "T"];
-    const tieOwned: { palId: string; male: boolean; female: boolean }[] = [];
+    const tieOwned: OwnedEntry[] = [];
     const tieRules: BreedRule[] = [];
     for (const [ruleId, prefix] of [[100, "PA"], [200, "PB"]] as const) {
       tiePals.push(`${prefix}M`, `${prefix}F`);
-      tieOwned.push(
-        { palId: `${prefix}M`, male: true, female: false },
-        { palId: `${prefix}F`, male: false, female: true },
-      );
+      tieOwned.push(...own(`${prefix}M`, `${prefix}F`));
       tieRules.push({
         id: ruleId,
         parentA: `${prefix}M`,
@@ -293,10 +259,7 @@ describe("owned collection planning", () => {
     for (let ruleId = 1; ruleId <= 21; ruleId += 1) {
       const prefix = `Q${String(ruleId).padStart(2, "0")}`;
       tiePals.push(`${prefix}M`, `${prefix}F`);
-      tieOwned.push(
-        { palId: `${prefix}M`, male: true, female: false },
-        { palId: `${prefix}F`, male: false, female: true },
-      );
+      tieOwned.push(...own(`${prefix}M`, `${prefix}F`));
       tieRules.push({
         id: ruleId,
         parentA: `${prefix}M`,
@@ -333,16 +296,12 @@ describe("owned collection planning", () => {
     ];
     const staleIds = ["Y", "Z", "A", "B", "C", "X", "D", "E", "F", "G", "H", "I", "P", "Q", "T"];
     const staleIndex = buildBreedingIndex(staleIds.map((id, i) => pal(id, i)), staleRules);
-    const owned = [
-      ["A", "M"], ["B", "F"], ["C", "F"], ["D", "M"], ["E", "F"],
-      ["F", "F"], ["G", "F"], ["H", "M"], ["I", "M"],
-    ] as const;
-
-    const plans = planFromOwned(staleIndex, owned.map(([palId, sex]) => ({
-      palId,
-      male: sex === "M",
-      female: sex === "F",
-    })), "T", 4);
+    const plans = planFromOwned(
+      staleIndex,
+      own("A", "B", "C", "D", "E", "F", "G", "H", "I"),
+      "T",
+      4,
+    );
 
     expect(plans).toHaveLength(2);
     expect(plans.every((plan) => plan.steps.length === 4)).toBe(true);

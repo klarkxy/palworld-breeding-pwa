@@ -13,13 +13,13 @@ const router = useRouter();
 const emit = defineEmits<{ close: [] }>();
 const drawer = useTemplateRef<HTMLDialogElement>("drawer");
 const { palById, activeSkillById, partnerSkillById, selfBreedOnlyIds, isLoading, error, load } = usePalData();
-const { entries, setSex } = useCollection();
+const { entries, setOwned } = useCollection();
 const id = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id);
 const pal = computed(() => {
   const candidate = palById.value.get(id.value ?? "");
   return candidate && isSelectablePal(candidate) ? candidate : undefined;
 });
-const owned = computed(() => entries.value.find((entry) => entry.palId === pal.value?.id));
+const isOwned = computed(() => entries.value.some((entry) => entry.palId === pal.value?.id));
 const malePercent = computed(() => {
   const value = pal.value?.maleProbability ?? 0.5;
   return Math.round(value <= 1 ? value * 100 : value);
@@ -140,7 +140,7 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
           <div class="detail-hero__copy">
             <p class="eyebrow">{{ formatDex(pal) }} · {{ pal.id }}</p>
             <h1>{{ pal.names.zh }}</h1><p class="detail-english">{{ pal.names.en }}</p>
-            <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种雄性与雌性帕鲁产出">仅可自交</span></div>
+            <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种帕鲁产出">仅可自交</span></div>
             <div class="detail-actions">
               <button class="button button--primary" type="button" @click="openCalculator('parent')">设为亲本 A</button>
               <button class="button button--secondary" type="button" @click="openCalculator('target')">查全部父母组合</button>
@@ -148,8 +148,7 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
           </div>
           <fieldset class="detail-owned">
             <legend>加入我的帕鲁</legend>
-            <label class="sex-toggle sex-toggle--male"><input type="checkbox" :checked="owned?.male ?? false" @change="setSex(pal.id, 'male', ($event.target as HTMLInputElement).checked)" /><span>♂ 雄</span></label>
-            <label class="sex-toggle sex-toggle--female"><input type="checkbox" :checked="owned?.female ?? false" @change="setSex(pal.id, 'female', ($event.target as HTMLInputElement).checked)" /><span>♀ 雌</span></label>
+            <label class="owned-toggle"><input type="checkbox" :aria-label="`${pal.names.zh}已拥有`" :checked="isOwned" @change="setOwned(pal.id, ($event.target as HTMLInputElement).checked)" /><span>已拥有</span></label>
           </fieldset>
         </EggshellCard>
 
