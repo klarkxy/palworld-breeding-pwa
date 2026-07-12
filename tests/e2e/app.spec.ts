@@ -48,7 +48,10 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(page.locator(".recipe-row").first()).toBeVisible();
 
   await page.getByRole("link", { name: "图鉴" }).click();
-  await expect(page.locator(".paldex-card").first()).toContainText(/#001[\s\S]*棉悠悠/);
+  const firstPaldexCard = page.locator(".paldex-card").first();
+  await expect(firstPaldexCard).toContainText(/#001[\s\S]*棉悠悠/);
+  await firstPaldexCard.hover();
+  await expect(firstPaldexCard.getByRole("tooltip")).toContainText(/生命70[\s\S]*手工作业Lv\.1/);
   await page.getByLabel("工作").selectOption({ label: "采矿" });
   await expect(page.locator(".paldex-card").first()).toContainText(/#184[\s\S]*磐甲龙/);
   await page.getByLabel("工作").selectOption("");
