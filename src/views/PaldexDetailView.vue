@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, useTemplateRef } from "vue";
+import { computed, onMounted, onUnmounted, ref, useTemplateRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
@@ -35,46 +35,20 @@ const partnerSkillDetails = computed(() => {
   return skillId ? partnerSkillById.value.get(skillId) : undefined;
 });
 const refinement = computed(() => pal.value?.refinement);
-const keyedMetrics = (metrics: readonly PartnerSkillRefinementMetric[]) => {
-  const occurrences = new Map<string, number>();
-  return metrics.map((metric) => {
-    const identity = metric.key.startsWith("passive:") ? metric.technicalId ?? metric.label : metric.key;
-    const base = [identity, metric.target, metric.context].join("\0");
-    const occurrence = occurrences.get(base) ?? 0;
-    occurrences.set(base, occurrence + 1);
-    return [`${base}\0${occurrence}`, metric] as const;
-  });
-};
-const refinementMetricRows = computed(() => {
+const selectedStars = ref<0 | 4>(0);
+const selectedRank = computed(() => {
   const data = refinement.value;
-  if (!data) return [];
-  const zero = new Map(keyedMetrics(data.zeroStar.metrics));
-  const four = new Map(keyedMetrics(data.fourStar.metrics));
-  return [...new Set([...zero.keys(), ...four.keys()])].map((key) => ({
-    key,
-    label: zero.get(key)?.label ?? four.get(key)?.label ?? key,
-    context: zero.get(key)?.context ?? four.get(key)?.context,
-    zero: zero.get(key),
-    four: four.get(key),
-  }));
+  return data ? selectedStars.value === 4 ? data.fourStar : data.zeroStar : undefined;
 });
-const refinementWorkRows = computed(() => {
-  const data = refinement.value;
-  if (!data) return [];
-  const keys = new Set([
-    ...Object.keys(data.zeroStar.workSuitability),
-    ...Object.keys(data.fourStar.workSuitability),
-  ]);
-  return [...keys].map((key) => ({
-    key,
-    label: workName(key),
-    zero: data.zeroStar.workSuitability[key],
-    four: data.fourStar.workSuitability[key],
-  }));
-});
+const selectedWorkSuitability = computed(() => selectedRank.value?.workSuitability ?? pal.value?.workSuitability ?? {});
+const selectedMetrics = computed(() => selectedRank.value?.metrics ?? []);
 
 const statLabels: Record<string, string> = { hp: "生命", attack: "攻击", defense: "防御", stamina: "体力", support: "支援" };
 const statName = (value: string) => statLabels[value.toLocaleLowerCase()] ?? value;
+const refinedStats = new Set(["hp", "attack", "defense"]);
+const statValue = (key: string, value: number) => refinedStats.has(key.toLocaleLowerCase())
+  ? Math.round(value * (selectedRank.value?.statMultiplier ?? 1))
+  : value;
 const movementTypeLabels = { ground: "地面", fly: "飞行", flyAndLanding: "飞行兼落地", swim: "游泳" } as const;
 const movementRows = computed(() => {
   const movement = pal.value?.movement;
@@ -102,10 +76,8 @@ const formatMovementValue = (value: number | undefined) => value === undefined |
 const refinementTargetNames: Record<string, string> = {
   ToSelf: "当前帕鲁", ToTrainer: "玩家", ToSelfAndTrainer: "玩家与当前帕鲁", None: "",
 };
-const metricValue = (metric?: PartnerSkillRefinementMetric) => metric
-  ? `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`
-  : "—";
-const metricTarget = (metric?: PartnerSkillRefinementMetric) => metric?.target
+const metricValue = (metric: PartnerSkillRefinementMetric) => `${metric.value}${metric.unit ? ` ${metric.unit}` : ""}`;
+const metricTarget = (metric: PartnerSkillRefinementMetric) => metric.target
   ? refinementTargetNames[metric.target] ?? metric.target
   : "";
 
@@ -135,6 +107,14 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
     </header>
     <DataState :is-loading :error @retry="load">
       <div v-if="pal" class="paldex-detail paldex-drawer__content">
+        <fieldset v-if="selectedRank" class="refinement-selector">
+          <legend>精炼星级</legend>
+          <div class="mini-tabs">
+            <button type="button" :class="{ active: selectedStars === 0 }" :aria-pressed="selectedStars === 0" @click="selectedStars = 0">0 星</button>
+            <button type="button" :class="{ active: selectedStars === 4 }" :aria-pressed="selectedStars === 4" @click="selectedStars = 4">4 星</button>
+          </div>
+          <p class="refinement-selector__summary" aria-live="polite">当前 {{ selectedStars }} 星 · 伙伴技能 Lv.{{ selectedRank.partnerSkillLevel }} · 累计消耗 {{ selectedRank.consumedCopies }} 只同种帕鲁</p>
+        </fieldset>
         <EggshellCard tone="sky" class="detail-hero">
           <div class="detail-hero__art"><PalIcon :pal size="large" /></div>
           <div class="detail-hero__copy">
@@ -153,60 +133,34 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
         </EggshellCard>
 
         <div class="detail-grid">
-          <EggshellCard><p class="eyebrow">属性</p><h2>基础数值</h2><dl class="stat-grid"><div v-for="(value, key) in pal.stats" :key="key"><dt>{{ statName(key) }}</dt><dd>{{ value }}</dd></div><div><dt>雄性概率</dt><dd>{{ malePercent }}%</dd></div><div><dt>配种力</dt><dd>{{ pal.breedingPower }}</dd></div></dl></EggshellCard>
-          <EggshellCard><p class="eyebrow">工作</p><h2>据点分工</h2><ul v-if="Object.keys(pal.workSuitability).length" class="level-list"><li v-for="(level, work) in pal.workSuitability" :key="work"><span>{{ workName(work) }}</span><strong>Lv.{{ level }}</strong></li></ul><p v-else class="muted-copy">暂无数据。</p></EggshellCard>
+          <EggshellCard class="stats-card"><p class="eyebrow">属性 · {{ selectedStars }} 星</p><h2>基础数值</h2><dl class="stat-grid"><div v-for="(value, key) in pal.stats" :key="key"><dt>{{ statName(key) }}</dt><dd>{{ statValue(key, value) }}</dd></div><div><dt>雄性概率</dt><dd>{{ malePercent }}%</dd></div><div><dt>配种力</dt><dd>{{ pal.breedingPower }}</dd></div></dl></EggshellCard>
+          <EggshellCard class="work-card"><p class="eyebrow">工作 · {{ selectedStars }} 星</p><h2>据点分工</h2><ul v-if="Object.keys(selectedWorkSuitability).length" class="level-list"><li v-for="(level, work) in selectedWorkSuitability" :key="work"><span>{{ workName(work) }}</span><strong>Lv.{{ level }}</strong></li></ul><p v-else class="muted-copy">暂无数据。</p></EggshellCard>
           <EggshellCard class="movement-card">
             <p class="eyebrow">移动</p>
             <h2>移动参数</h2>
             <p class="movement-type">内部移动类型：<strong>{{ pal.movement.type ? movementTypeLabels[pal.movement.type] : "未解析" }}</strong></p>
             <dl class="stat-grid"><div v-for="row in movementRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ formatMovementValue(row.value) }}</dd></div></dl>
-            <p class="muted-copy movement-note">这些是游戏角色表与 Blueprint 参数，不代表该帕鲁一定可乘骑或只能以此方式移动。飞行覆盖值仅在 Blueprint 明确设置时显示；未设置不等于速度为零。</p>
+            <p class="muted-copy movement-note">这些是游戏角色表与 Blueprint 基础参数，不代表该帕鲁一定可乘骑或只能以此方式移动。星级带来的移动加成列在伙伴技能参数中，不直接改写此处数值。</p>
           </EggshellCard>
           <EggshellCard class="partner-skill-card">
-            <p class="eyebrow">伙伴技能</p>
+            <p class="eyebrow">伙伴技能 · {{ selectedStars }} 星</p>
             <h2>{{ partnerSkillDetails?.name || pal.partnerSkill || "暂无" }}</h2>
-            <p v-if="partnerSkillDetails" class="muted-copy">{{ partnerSkillDetails.description }}</p>
+            <p v-if="selectedRank" class="partner-skill-rank">伙伴技能 Lv.{{ selectedRank.partnerSkillLevel }}</p>
+            <p v-if="partnerSkillDetails && (!selectedRank || selectedStars === 0)" class="muted-copy">{{ partnerSkillDetails.description }}</p>
+            <details v-else-if="partnerSkillDetails" class="partner-skill-base">
+              <summary>查看 0 星基础说明</summary>
+              <p class="muted-copy">{{ partnerSkillDetails.description }}</p>
+            </details>
             <p v-else class="muted-copy">暂无说明。</p>
-          </EggshellCard>
-          <EggshellCard v-if="refinement" class="refinement-card">
-            <p class="eyebrow">精炼</p>
-            <h2>0 星 / 4 星对照</h2>
-            <div class="refinement-table-wrap" tabindex="0" aria-label="通用精炼效果表，可横向滚动">
-              <table class="refinement-table">
-                <caption class="sr-only">通用精炼效果</caption>
-                <thead><tr><th scope="col">项目</th><th scope="col">0 星</th><th scope="col">4 星</th></tr></thead>
-                <tbody>
-                  <tr><th scope="row">伙伴技能等级</th><td>Lv.{{ refinement.zeroStar.partnerSkillLevel }}</td><td>Lv.{{ refinement.fourStar.partnerSkillLevel }}</td></tr>
-                  <tr><th scope="row">生命 / 攻击 / 防御</th><td>×{{ refinement.zeroStar.statMultiplier.toFixed(2) }}</td><td>×{{ refinement.fourStar.statMultiplier.toFixed(2) }}</td></tr>
-                  <tr><th scope="row">累计素材消耗</th><td>{{ refinement.zeroStar.consumedCopies }}</td><td>{{ refinement.fourStar.consumedCopies }}</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <h3 v-if="refinementWorkRows.length" class="refinement-subtitle">工作适应性</h3>
-            <div v-if="refinementWorkRows.length" class="refinement-table-wrap" tabindex="0" aria-label="工作适应性精炼表，可横向滚动">
-              <table class="refinement-table">
-                <caption class="sr-only">工作适应性精炼前后等级</caption>
-                <thead><tr><th scope="col">工种</th><th scope="col">0 星</th><th scope="col">4 星</th></tr></thead>
-                <tbody><tr v-for="row in refinementWorkRows" :key="row.key"><th scope="row">{{ row.label }}</th><td>Lv.{{ row.zero }}</td><td>Lv.{{ row.four }}</td></tr></tbody>
-              </table>
-            </div>
-            <h3 class="refinement-subtitle">伙伴技能参数</h3>
-            <div v-if="refinementMetricRows.length" class="refinement-table-wrap" tabindex="0" aria-label="伙伴技能精炼参数表，可横向滚动">
-              <table class="refinement-table refinement-table--metrics">
-                <caption class="sr-only">伙伴技能 0 星与 4 星参数</caption>
-                <thead><tr><th scope="col">效果</th><th scope="col">0 星</th><th scope="col">4 星</th></tr></thead>
-                <tbody>
-                  <tr v-for="row in refinementMetricRows" :key="row.key">
-                    <th scope="row"><span>{{ row.label }}</span><small v-if="row.context">{{ row.context }}</small></th>
-                    <td>{{ metricValue(row.zero) }}<small v-if="metricTarget(row.zero)">{{ metricTarget(row.zero) }}</small></td>
-                    <td>{{ metricValue(row.four) }}<small v-if="metricTarget(row.four)">{{ metricTarget(row.four) }}</small></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p v-else class="muted-copy">该技能 0 星与 4 星没有可变数值。</p>
-            <p v-for="note in refinement.notes" :key="note" class="muted-copy refinement-note">{{ note }}</p>
-            <p class="muted-copy refinement-note">0 星对应内部 Rank 1，4 星对应 Rank 5。工作等级按 1.0 的逐星分配规则计算并封顶 Lv.10；未标单位的技能值是游戏内部参数，用于精确比较，不擅自换算为百分比。</p>
+            <h3 v-if="selectedRank" class="partner-metrics-title">{{ selectedStars }} 星参数</h3>
+            <ul v-if="selectedMetrics.length" class="level-list partner-metric-list">
+              <li v-for="(metric, index) in selectedMetrics" :key="`${metric.key}-${index}`">
+                <span>{{ metric.label }}<small v-if="metric.context">{{ metric.context }}</small></span>
+                <strong>{{ metricValue(metric) }}<small v-if="metricTarget(metric)">{{ metricTarget(metric) }}</small></strong>
+              </li>
+            </ul>
+            <p v-else-if="selectedRank" class="muted-copy">该技能在 {{ selectedStars }} 星没有可变参数。</p>
+            <p v-for="note in refinement?.notes ?? []" :key="note" class="muted-copy refinement-note">{{ note }}</p>
           </EggshellCard>
           <EggshellCard>
             <p class="eyebrow">技能</p>

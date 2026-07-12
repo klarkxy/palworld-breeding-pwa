@@ -56,12 +56,14 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   expect(targetBox!.width).toBeGreaterThan(calculatorBox!.width * .35);
 
   await page.getByRole("link", { name: "图鉴" }).click();
+  await expect.poll(() => page.locator("html").evaluate((element) => getComputedStyle(element).fontSize)).toBe("18px");
   const firstPaldexCard = page.locator(".paldex-card").first();
   await expect(firstPaldexCard).toContainText("棉悠悠");
   await expect(firstPaldexCard.locator(".dex-stamp")).toHaveText("No. 001");
   await expect(firstPaldexCard.locator(".paldex-card__work")).toContainText(/手工作业\s*Lv\.1/);
   await expect(firstPaldexCard.locator(".self-breed-badge")).toHaveCount(0);
   await expect(page.locator(".mount-tech-badge")).toHaveCount(115);
+  await expect(page.locator(".mount-type-badge")).toHaveCount(115);
   const paldexColumns = await page.locator(".paldex-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
   expect(paldexColumns).toBe(page.viewportSize()!.width < 672 ? 1 : page.viewportSize()!.width < 1_088 ? 2 : 3);
   const paldexPreview = firstPaldexCard.locator(".paldex-preview");
@@ -71,10 +73,15 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
     await expect(paldexPreview).toBeVisible();
   }
   await page.getByLabel("搜索图鉴").fill("cmz");
-  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("乘骑 · 科技 Lv.6");
-  await expect(page.locator(".paldex-card")).toHaveAccessibleName(/乘骑 · 科技 Lv\.6/);
+  await expect(page.locator(".paldex-card .mount-type-badge")).toHaveText("地面");
+  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("LV6");
+  await expect(page.locator(".paldex-card")).toHaveAccessibleName(/地面，LV6/);
+  await page.getByLabel("搜索图鉴").fill("IceHorse");
+  const frostallionCard = page.locator(".paldex-card").filter({ has: page.getByRole("heading", { name: "唤冬兽", exact: true }) });
+  await expect(frostallionCard.locator(".mount-type-badge")).toHaveText("飞行兼落地");
+  await expect(frostallionCard.locator(".mount-tech-badge")).toHaveText("LV62");
   await page.getByLabel("搜索图鉴").fill("acj");
-  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("乘骑 · 无科技条目");
+  await expect(page.locator(".paldex-card .mount-tech-badge")).toHaveText("无科技条目");
   await page.getByLabel("搜索图鉴").fill("ppj");
   const selfBreedCard = page.locator(".paldex-card");
   await expect(selfBreedCard).toHaveAccessibleName(/仅可同种自交/);
@@ -108,20 +115,49 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   expect(drawerRatio).toBeGreaterThan(page.viewportSize()!.width < 672 ? .95 : .45);
   expect(drawerRatio).toBeLessThan(page.viewportSize()!.width < 672 ? 1.01 : .55);
   await expect(page.getByRole("heading", { name: "吓丝妮", level: 1 })).toBeVisible();
+  const refinementSelector = drawer.locator(".refinement-selector");
+  const zeroStarButton = refinementSelector.getByRole("button", { name: "0 星", exact: true });
+  const fourStarButton = refinementSelector.getByRole("button", { name: "4 星", exact: true });
+  await expect(zeroStarButton).toHaveAttribute("aria-pressed", "true");
+  await expect(fourStarButton).toHaveAttribute("aria-pressed", "false");
+  const [selectorBox, heroBox] = await Promise.all([refinementSelector.boundingBox(), drawer.locator(".detail-hero").boundingBox()]);
+  expect(selectorBox!.y + selectorBox!.height).toBeLessThanOrEqual(heroBox!.y);
+  await expect(drawer.locator(".refinement-card")).toHaveCount(0);
+  await expect(drawer.getByRole("heading", { name: "0 星 / 4 星对照" })).toHaveCount(0);
+  const statsCard = drawer.locator(".stats-card");
+  const workCard = drawer.locator(".work-card");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "生命" })).toHaveText("生命70");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "攻击" })).toHaveText("攻击85");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "防御" })).toHaveText("防御80");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "体力" })).toHaveText("体力100");
+  await expect(workCard).toContainText(/手工作业\s*Lv\.3[\s\S]*制药\s*Lv\.4[\s\S]*搬运\s*Lv\.2/);
   const partnerSkill = page.locator(".partner-skill-card");
   await expect(partnerSkill.getByRole("heading", { name: "播撒欢笑的亡者" })).toBeVisible();
   await expect(partnerSkill).toContainText("攻击陷入中毒状态的敌人时");
-  const refinementCard = drawer.locator(".refinement-card");
-  await expect(refinementCard.getByRole("heading", { name: "0 星 / 4 星对照" })).toBeVisible();
-  await expect(refinementCard).toContainText(/Lv\.1[\s\S]*Lv\.5[\s\S]*×1\.00[\s\S]*×1\.20/);
-  await expect(refinementCard.locator("tr").filter({ hasText: "攻击中毒目标时施加降攻" }))
-    .toContainText(/40[\s\S]*80/);
+  await expect(partnerSkill.locator(".partner-skill-rank")).toHaveText("伙伴技能 Lv.1");
+  await expect(partnerSkill.locator(".partner-metric-list li")).toHaveText(/攻击中毒目标时施加降攻\s*40\s*玩家/);
+
+  await fourStarButton.click();
+  await expect(zeroStarButton).toHaveAttribute("aria-pressed", "false");
+  await expect(fourStarButton).toHaveAttribute("aria-pressed", "true");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "生命" })).toHaveText("生命84");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "攻击" })).toHaveText("攻击102");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "防御" })).toHaveText("防御96");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "体力" })).toHaveText("体力100");
+  await expect(workCard).toContainText(/手工作业\s*Lv\.5[\s\S]*制药\s*Lv\.6[\s\S]*搬运\s*Lv\.4/);
+  await expect(partnerSkill.locator(".partner-skill-rank")).toHaveText("伙伴技能 Lv.5");
+  await expect(partnerSkill.locator(".partner-metric-list li")).toHaveText(/攻击中毒目标时施加降攻\s*80\s*玩家/);
+  await expect(partnerSkill.getByText("查看 0 星基础说明", { exact: true })).toBeVisible();
+  await expect(partnerSkill.getByText(/攻击力降低40%/)).toBeHidden();
   const movementCard = drawer.locator(".movement-card");
   await expect(movementCard.getByRole("heading", { name: "移动参数" })).toBeVisible();
   await expect(movementCard).toContainText(/内部移动类型：\s*地面[\s\S]*奔跑参数/);
   const darkBall = page.locator(".skill-list li").filter({ hasText: "暗黑球" });
   await expect(darkBall).toContainText("暗 · 威力 50 · 冷却 2 秒 · Lv.1");
   await expect(darkBall).toContainText("发射以缓慢速度追击敌人的黑暗之球。");
+  await zeroStarButton.press("Enter");
+  await expect(zeroStarButton).toHaveAttribute("aria-pressed", "true");
+  await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "生命" })).toHaveText("生命70");
   await drawer.getByRole("button", { name: "关闭详细图鉴" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByLabel("搜索图鉴")).toHaveValue("xsn");
@@ -196,6 +232,7 @@ test("核心页面无严重无障碍问题", async ({ page }) => {
   test.setTimeout(90_000);
   for (const route of ["/breeding", "/paths", "/collection", "/paldex", "/paldex/OniGhostGirl"]) {
     await openApp(page, route);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     if (route === "/breeding") await page.locator(".pal-select input").first().focus();
     await page.waitForTimeout(200);
     const results = await new AxeBuilder({ page }).analyze();
