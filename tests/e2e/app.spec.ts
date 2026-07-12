@@ -46,6 +46,9 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
 
   await page.getByRole("button", { name: /\? ＋ \? ＝ B/ }).click();
   await expect(page.locator(".recipe-row").first()).toBeVisible();
+  const calculatorBox = await page.locator(".calculator-fields").boundingBox();
+  const targetBox = await targetSelect.boundingBox();
+  expect(targetBox!.width).toBeGreaterThan(calculatorBox!.width * .35);
 
   await page.getByRole("link", { name: "图鉴" }).click();
   const firstPaldexCard = page.locator(".paldex-card").first();
