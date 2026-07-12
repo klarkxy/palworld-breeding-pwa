@@ -1,19 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useTemplateRef } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { storeToRefs } from "pinia";
+import { NButton, NCheckbox, NDrawer, NDrawerContent, NEmpty, NRadioButton, NRadioGroup } from "naive-ui";
 import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
 import PalIcon from "@/components/PalIcon.vue";
-import { useCollection } from "@/composables/useCollection";
-import { elementName, formatDex, isSelectablePal, usePalData, workName } from "@/composables/usePalData";
+import { elementName, formatDex, isSelectablePal, workName } from "@/composables/usePalData";
 import type { PartnerSkillRefinementMetric } from "@/core";
+import { useCollectionStore } from "@/stores/collection";
+import { usePalDataStore } from "@/stores/palData";
+import { usePaldexStore } from "@/stores/paldex";
 
 const route = useRoute();
 const router = useRouter();
 const emit = defineEmits<{ close: [] }>();
-const drawer = useTemplateRef<HTMLDialogElement>("drawer");
-const { palById, activeSkillById, partnerSkillById, selfBreedOnlyIds, isLoading, error, load } = usePalData();
-const { entries, setOwned } = useCollection();
+const palData = usePalDataStore();
+const collection = useCollectionStore();
+const paldex = usePaldexStore();
+const { palById, activeSkillById, partnerSkillById, selfBreedOnlyIds, isLoading, error } = storeToRefs(palData);
+const { entries } = storeToRefs(collection);
+const { selectedStars } = storeToRefs(paldex);
+const { load } = palData;
+const { setOwned } = collection;
+const isOpen = ref(true);
 const id = computed(() => Array.isArray(route.params.id) ? route.params.id[0] : route.params.id);
 const pal = computed(() => {
   const candidate = palById.value.get(id.value ?? "");
@@ -35,7 +45,6 @@ const partnerSkillDetails = computed(() => {
   return skillId ? partnerSkillById.value.get(skillId) : undefined;
 });
 const refinement = computed(() => pal.value?.refinement);
-const selectedStars = ref<0 | 4>(0);
 const selectedRank = computed(() => {
   const data = refinement.value;
   return data ? selectedStars.value === 4 ? data.fourStar : data.zeroStar : undefined;
@@ -89,30 +98,59 @@ function openCalculator(kind: "parent" | "target") {
 }
 
 function closeOnEscape(event: KeyboardEvent) {
-  if (event.key === "Escape") drawer.value?.close();
+  if (event.key === "Escape") isOpen.value = false;
+}
+
+function markDrawerNonModal() {
+  // Naive hardcodes aria-modal=true; this drawer intentionally leaves the Pal list interactive.
+  document.querySelector<HTMLElement>(".paldex-drawer")?.setAttribute("aria-modal", "false");
 }
 
 onMounted(() => {
-  drawer.value?.show();
   window.addEventListener("keydown", closeOnEscape);
+  void nextTick(() => {
+    markDrawerNonModal();
+    document.querySelector<HTMLButtonElement>(".paldex-drawer__close")?.focus();
+  });
 });
 onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
 
 <template>
-  <dialog ref="drawer" class="paldex-drawer" :aria-label="pal ? `${pal.names.zh}详细图鉴` : '帕鲁详细图鉴'" @close="emit('close')">
-    <header class="paldex-drawer__topbar">
-      <div><small>详细图鉴</small><strong>{{ pal?.names.zh ?? "帕鲁" }}</strong></div>
-      <form method="dialog"><button class="paldex-drawer__close" type="submit" aria-label="关闭详细图鉴">×</button></form>
-    </header>
+  <NDrawer
+    class="paldex-drawer"
+    :aria-label="pal ? `${pal.names.zh}详细图鉴` : '帕鲁详细图鉴'"
+    :show="isOpen"
+    placement="right"
+    width="var(--paldex-drawer-width)"
+    :show-mask="false"
+    :block-scroll="false"
+    :trap-focus="false"
+    :auto-focus="true"
+    :close-on-esc="false"
+    @update:show="isOpen = $event"
+    @after-enter="markDrawerNonModal"
+    @after-leave="emit('close')"
+  >
+    <NDrawerContent
+      :title="pal ? `${pal.names.zh}详细图鉴` : '帕鲁详细图鉴'"
+      :header-style="{ padding: 0 }"
+      :body-content-style="{ padding: 0 }"
+    >
+      <template #header>
+        <header class="paldex-drawer__topbar">
+          <div><small>详细图鉴</small><strong>{{ pal?.names.zh ?? "帕鲁" }}</strong></div>
+          <NButton class="paldex-drawer__close" circle quaternary aria-label="关闭详细图鉴" @click="isOpen = false">×</NButton>
+        </header>
+      </template>
     <DataState :is-loading :error @retry="load">
       <div v-if="pal" class="paldex-detail paldex-drawer__content">
         <fieldset v-if="selectedRank" class="refinement-selector">
           <legend>精炼星级</legend>
-          <div class="mini-tabs">
-            <button type="button" :class="{ active: selectedStars === 0 }" :aria-pressed="selectedStars === 0" @click="selectedStars = 0">0 星</button>
-            <button type="button" :class="{ active: selectedStars === 4 }" :aria-pressed="selectedStars === 4" @click="selectedStars = 4">4 星</button>
-          </div>
+          <NRadioGroup v-model:value="selectedStars" class="mini-tabs" name="refinement-stars" aria-label="精炼星级">
+            <NRadioButton class="mini-tabs__option" :value="0">0 星</NRadioButton>
+            <NRadioButton class="mini-tabs__option" :value="4">4 星</NRadioButton>
+          </NRadioGroup>
           <p class="refinement-selector__summary" aria-live="polite">当前 {{ selectedStars }} 星 · 伙伴技能 Lv.{{ selectedRank.partnerSkillLevel }} · 累计消耗 {{ selectedRank.consumedCopies }} 只同种帕鲁</p>
         </fieldset>
         <EggshellCard tone="sky" class="detail-hero">
@@ -122,13 +160,13 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
             <h1>{{ pal.names.zh }}</h1><p class="detail-english">{{ pal.names.en }}</p>
             <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种帕鲁产出">仅可自交</span></div>
             <div class="detail-actions">
-              <button class="button button--primary" type="button" @click="openCalculator('parent')">设为亲本 A</button>
-              <button class="button button--secondary" type="button" @click="openCalculator('target')">查全部父母组合</button>
+              <NButton type="primary" round @click="openCalculator('parent')">设为亲本 A</NButton>
+              <NButton secondary round @click="openCalculator('target')">查全部父母组合</NButton>
             </div>
           </div>
           <fieldset class="detail-owned">
             <legend>加入我的帕鲁</legend>
-            <label class="owned-toggle"><input type="checkbox" :aria-label="`${pal.names.zh}已拥有`" :checked="isOwned" @change="setOwned(pal.id, ($event.target as HTMLInputElement).checked)" /><span>已拥有</span></label>
+            <NCheckbox class="owned-toggle" :class="{ 'owned-toggle--checked': isOwned }" :checked="isOwned" @update:checked="setOwned(pal.id, $event)"><span class="sr-only">{{ pal.names.zh }}</span>已拥有</NCheckbox>
           </fieldset>
         </EggshellCard>
 
@@ -179,7 +217,8 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
           </EggshellCard>
         </div>
       </div>
-      <div v-else class="empty-state"><span aria-hidden="true">?</span><p>图鉴中没有这个帕鲁。</p></div>
+      <NEmpty v-else class="empty-state" description="图鉴中没有这个帕鲁。" />
     </DataState>
-  </dialog>
+    </NDrawerContent>
+  </NDrawer>
 </template>

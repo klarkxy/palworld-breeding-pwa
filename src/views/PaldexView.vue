@@ -1,23 +1,30 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { NEmpty, NInput, NSelect } from "naive-ui";
+import type { SelectOption } from "naive-ui";
+import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalIcon from "@/components/PalIcon.vue";
-import { elementName, formatDex, palMatchesSearch, usePalData, workName } from "@/composables/usePalData";
+import { elementName, formatDex, palMatchesSearch, workName } from "@/composables/usePalData";
 import type { PalRecord } from "@/core";
+import { usePalDataStore } from "@/stores/palData";
+import { usePaldexStore } from "@/stores/paldex";
+import type { PaldexSortKey as SortKey } from "@/stores/paldex";
 
 const router = useRouter();
-const { visiblePals, partnerSkillById, selfBreedOnlyIds, isLoading, error, load } = usePalData();
-const query = ref("");
-const element = ref("");
-const work = ref("");
-const variant = ref<"all" | "base" | "variant">("all");
-type SortKey = "dex" | "hp" | "attack" | "defense" | "stamina" | "maleProbability" | "breedingPower"
-  | "slowWalkSpeed" | "walkSpeed" | "runSpeed" | "rideSprintSpeed" | "transportSpeed"
-  | "swimSpeed" | "swimDashSpeed" | "flightBaseSpeed" | "flightBaseSprint"
-  | "flySpeedOverride" | "flySprintSpeedOverride";
-interface SortOption {
+const route = useRoute();
+const palData = usePalDataStore();
+const paldex = usePaldexStore();
+const { visiblePals, partnerSkillById, selfBreedOnlyIds, isLoading, error } = storeToRefs(palData);
+const { query, element, work, variant, sortKey } = storeToRefs(paldex);
+const { load } = palData;
+
+watch([() => route.query, () => visiblePals.value.length], ([routeQuery, palCount]) => {
+  if (palCount) paldex.applyRoute(routeQuery);
+}, { immediate: true });
+interface SortOption extends SelectOption {
   value: SortKey;
   label: string;
   direction?: "asc" | "desc";
@@ -26,7 +33,7 @@ interface SortOption {
 const isFlight = (pal: PalRecord) => pal.movement.type === "fly" || pal.movement.type === "flyAndLanding";
 const usable = (value: number | undefined) => value !== undefined && value >= 0 ? value : undefined;
 const defaultSort: SortOption = { value: "dex", label: "图鉴编号（低→高）" };
-const sortOptions: readonly SortOption[] = [
+const sortOptions: SortOption[] = [
   defaultSort,
   { value: "hp", label: "生命（高→低）", get: (pal) => pal.stats.hp },
   { value: "attack", label: "攻击（高→低）", get: (pal) => pal.stats.attack },
@@ -46,7 +53,6 @@ const sortOptions: readonly SortOption[] = [
   { value: "flySpeedOverride", label: "飞行覆盖值（高→低）", get: (pal) => usable(pal.movement.flySpeedOverride) },
   { value: "flySprintSpeedOverride", label: "飞行冲刺覆盖值（高→低）", get: (pal) => usable(pal.movement.flySprintSpeedOverride) },
 ];
-const sortKey = ref<SortKey>("dex");
 const selectedSort = computed<SortOption>(() => sortOptions.find((option) => option.value === sortKey.value) ?? defaultSort);
 const quickStats = [["hp", "生命"], ["attack", "攻击"], ["defense", "防御"], ["stamina", "体力"], ["runSpeed", "奔跑"]] as const;
 const quickStatValue = (pal: PalRecord, key: typeof quickStats[number][0]) =>
@@ -67,6 +73,19 @@ const mountMovementTypeLabel = (pal: PalRecord) => pal.movement.type ? movementT
 
 const elementOptions = computed(() => [...new Set(visiblePals.value.flatMap((pal) => pal.elements))].sort());
 const workOptions = computed(() => [...new Set(visiblePals.value.flatMap((pal) => Object.keys(pal.workSuitability)))].sort());
+const elementSelectOptions = computed(() => [
+  { label: "全部属性", value: "" },
+  ...elementOptions.value.map((value) => ({ label: elementName(value), value })),
+]);
+const workSelectOptions = computed(() => [
+  { label: "全部工作", value: "" },
+  ...workOptions.value.map((value) => ({ label: workName(value), value })),
+]);
+const variantOptions = [
+  { label: "本体与亚种", value: "all" },
+  { label: "仅本体", value: "base" },
+  { label: "仅亚种", value: "variant" },
+];
 const filteredPals = computed(() => visiblePals.value.filter((pal) => {
   if (element.value && !pal.elements.includes(element.value)) return false;
   if (work.value && !(work.value in pal.workSuitability)) return false;
@@ -102,11 +121,11 @@ function closeDetail() {
     <PageIntro eyebrow="图鉴" title="帕鲁图鉴" description="按名称、编号、属性或工作适应性筛选帕鲁。" />
     <DataState :is-loading :error @retry="load">
       <section class="filter-bar filter-bar--paldex" aria-label="筛选图鉴">
-        <label class="field filter-search"><span class="field__label">搜索图鉴</span><input v-model="query" type="search" placeholder="中文 / 拼音首字母 / English / 编号 / ID" /></label>
-        <label class="field field--compact"><span class="field__label">属性</span><select v-model="element"><option value="">全部属性</option><option v-for="item in elementOptions" :key="item" :value="item">{{ elementName(item) }}</option></select></label>
-        <label class="field field--compact"><span class="field__label">工作</span><select v-model="work"><option value="">全部工作</option><option v-for="item in workOptions" :key="item" :value="item">{{ workName(item) }}</option></select></label>
-        <label class="field field--compact"><span class="field__label">种类</span><select v-model="variant"><option value="all">本体与亚种</option><option value="base">仅本体</option><option value="variant">仅亚种</option></select></label>
-        <label class="field field--compact"><span class="field__label">排序</span><select v-model="sortKey"><option v-for="option in sortOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+        <label class="field filter-search"><span class="field__label">搜索图鉴</span><NInput v-model:value="query" class="field-control" clearable size="large" placeholder="中文 / 拼音首字母 / English / 编号 / ID" :input-props="{ type: 'search', 'aria-label': '搜索图鉴' }" /></label>
+        <label class="field field--compact"><span class="field__label">属性</span><NSelect v-model:value="element" class="field-control" :options="elementSelectOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '属性' }" /></label>
+        <label class="field field--compact"><span class="field__label">工作</span><NSelect v-model:value="work" class="field-control" :options="workSelectOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '工作' }" /></label>
+        <label class="field field--compact"><span class="field__label">种类</span><NSelect v-model:value="variant" class="field-control" :options="variantOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '种类' }" /></label>
+        <label class="field field--compact"><span class="field__label">排序</span><NSelect v-model:value="sortKey" class="field-control" :options="sortOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '排序' }" /></label>
       </section>
       <p class="result-note">找到 {{ filteredPals.length }} 种帕鲁 · {{ work ? `${workName(work)}等级优先 · ` : "" }}{{ selectedSort.label }}</p>
       <ul class="paldex-grid">
@@ -143,8 +162,8 @@ function closeDetail() {
           </RouterLink>
         </li>
       </ul>
-      <div v-if="!filteredPals.length" class="empty-state"><span aria-hidden="true">⌕</span><p>没有匹配项。</p></div>
+      <NEmpty v-if="!filteredPals.length" class="empty-state" description="没有匹配项。" />
     </DataState>
-    <RouterView v-slot="{ Component }"><component :is="Component" @close="closeDetail" /></RouterView>
+    <RouterView v-slot="{ Component }"><component :is="Component" :key="route.fullPath" @close="closeDetail" /></RouterView>
   </main>
 </template>

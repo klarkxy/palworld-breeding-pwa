@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, watch } from "vue";
+import { NSelect } from "naive-ui";
+import type { SelectOption } from "naive-ui";
+import { computed, h, ref, useId } from "vue";
+import type { InputHTMLAttributes } from "vue";
 import PalIcon from "@/components/PalIcon.vue";
 import type { PalId, PalRecord } from "@/core";
 import {
@@ -17,144 +20,106 @@ const { pals, label, hint = "中文 / 拼音首字母 / English / 编号 / ID" }
 const model = defineModel<PalId | "">({ required: true });
 const inputId = useId();
 const listId = useId();
-const inputValue = ref("");
+const searchValue = ref("");
 const isOpen = ref(false);
-const activeIndex = ref(-1);
-const selectedPal = computed(() => pals.find((pal) => pal.id === model.value));
-const displayedSelectedPal = computed(() => {
-  const selected = selectedPal.value;
-  return selected && inputValue.value === palLabel(selected) ? selected : undefined;
+
+interface PalOption extends SelectOption {
+  value: PalId;
+  label: string;
+  pal: PalRecord;
+}
+
+const options = computed<PalOption[]>(() => pals.map((pal) => ({
+  value: pal.id,
+  label: palLabel(pal),
+  pal,
+})));
+const selectedValue = computed<PalId | null>({
+  get: () => model.value || null,
+  set: (value) => (model.value = value ?? ""),
 });
-const searchQuery = computed(() => displayedSelectedPal.value ? "" : inputValue.value);
-const suggestions = computed(() => pals.filter((pal) => palMatchesSearch(pal, searchQuery.value)));
-const activeOptionId = computed(() => isOpen.value && activeIndex.value >= 0
-  ? `${listId}-${activeIndex.value}`
-  : undefined);
+const inputProps = computed<InputHTMLAttributes>(() => ({
+  id: inputId,
+  name: inputId,
+  type: "search",
+  autocomplete: "off",
+  role: "combobox",
+  "aria-label": label,
+  "aria-autocomplete": "list",
+  "aria-haspopup": "listbox",
+  "aria-expanded": isOpen.value,
+  "aria-controls": listId,
+}));
+const menuProps = computed(() => ({
+  id: listId,
+  class: "pal-select__menu",
+  "aria-label": `${label}候选帕鲁`,
+}));
 
-function syncFromModel() {
-  const selected = selectedPal.value;
-  inputValue.value = selected ? palLabel(selected) : "";
+function filterPal(pattern: string, option: SelectOption) {
+  return palMatchesSearch((option as PalOption).pal, pattern);
 }
 
-function closeMenu() {
-  isOpen.value = false;
-  activeIndex.value = -1;
+function renderPal(option: SelectOption, selected: boolean) {
+  const pal = (option as PalOption).pal;
+  return h("span", { class: "pal-select__option-content" }, [
+    h("span", { class: selected ? "pal-select__selected-icon" : "pal-select__option-icon", "aria-hidden": "true" }, [
+      h(PalIcon, { pal, size: "small" }),
+    ]),
+    h("span", { class: "pal-select__option-copy" }, [
+      h("strong", pal.names.zh),
+      h("small", `${palPinyinInitials(pal).toLocaleUpperCase()} · ${pal.names.en} · ${formatDex(pal)} · ${pal.id}`),
+    ]),
+  ]);
 }
 
-function openMenu() {
-  isOpen.value = true;
-  activeIndex.value = -1;
+function updateValue(value: string | number | Array<string | number> | null) {
+  selectedValue.value = typeof value === "string" ? value : null;
+  searchValue.value = "";
 }
 
-function selectPal(pal: PalRecord) {
-  model.value = pal.id;
-  inputValue.value = palLabel(pal);
-  closeMenu();
-}
-
-function commit() {
-  const value = inputValue.value.trim().toLocaleLowerCase();
-  const selected = pals.find((pal) => {
-    const candidates = [palLabel(pal), pal.id, pal.names.zh, pal.names.en, String(pal.dexNo)];
-    return candidates.some((candidate) => candidate.toLocaleLowerCase() === value);
-  }) ?? (() => {
-    const matches = pals.filter((pal) => palPinyinInitials(pal) === value);
-    return matches.length === 1 ? matches[0] : undefined;
-  })();
+function commitSearch(rawValue = searchValue.value) {
+  const value = rawValue.trim().toLocaleLowerCase();
+  if (!value) return;
+  const selected = pals.find((pal) => [palLabel(pal), pal.id, pal.names.zh, pal.names.en, String(pal.dexNo)]
+    .some((candidate) => candidate.toLocaleLowerCase() === value))
+    ?? (() => {
+      const matches = pals.filter((pal) => palPinyinInitials(pal) === value);
+      return matches.length === 1 ? matches[0] : undefined;
+    })();
   model.value = selected?.id ?? "";
-  if (selected) inputValue.value = palLabel(selected);
-  closeMenu();
+  searchValue.value = "";
 }
 
-function clearSelection() {
-  model.value = "";
-  inputValue.value = "";
-  closeMenu();
+function commitOnTab(event: KeyboardEvent) {
+  if (event.key === "Tab" && event.target instanceof HTMLInputElement) commitSearch(event.target.value);
 }
-
-function handleInput() {
-  isOpen.value = true;
-  activeIndex.value = -1;
-}
-
-function moveActive(direction: 1 | -1) {
-  if (!isOpen.value) isOpen.value = true;
-  if (!suggestions.value.length) return;
-  activeIndex.value = activeIndex.value < 0
-    ? (direction === 1 ? 0 : suggestions.value.length - 1)
-    : (activeIndex.value + direction + suggestions.value.length) % suggestions.value.length;
-  void nextTick(() => document.getElementById(`${listId}-${activeIndex.value}`)?.scrollIntoView({ block: "nearest" }));
-}
-
-function handleKeydown(event: KeyboardEvent) {
-  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    moveActive(event.key === "ArrowDown" ? 1 : -1);
-    return;
-  }
-  if (event.key === "Escape") {
-    event.preventDefault();
-    closeMenu();
-    return;
-  }
-  if (event.key === "Enter") {
-    event.preventDefault();
-    const activePal = suggestions.value[activeIndex.value];
-    if (isOpen.value && activePal) selectPal(activePal);
-    else commit();
-  }
-}
-
-watch([() => model.value, () => pals.length], syncFromModel, { immediate: true });
 </script>
 
 <template>
-  <div class="field pal-select" :class="{ 'pal-select--open': isOpen }">
+  <div class="field pal-select" @keydown.capture="commitOnTab">
     <label class="field__label" :for="inputId">{{ label }}</label>
-    <div class="field__control" :class="{ 'field__control--selected': displayedSelectedPal }">
-      <span v-if="displayedSelectedPal" class="pal-select__selected-icon" aria-hidden="true">
-        <PalIcon :pal="displayedSelectedPal" size="small" />
-      </span>
-      <input
-        :id="inputId"
-        v-model="inputValue"
-        type="search"
-        :placeholder="hint"
-        autocomplete="off"
-        role="combobox"
-        aria-autocomplete="list"
-        aria-haspopup="listbox"
-        :aria-expanded="isOpen"
-        :aria-controls="listId"
-        :aria-activedescendant="activeOptionId"
-        @focus="openMenu"
-        @click="openMenu"
-        @input="handleInput"
-        @blur="commit"
-        @keydown="handleKeydown"
-      />
-      <button v-if="model" class="icon-button" type="button" aria-label="清除选择" @click="clearSelection">×</button>
-      <ul v-if="isOpen" :id="listId" class="pal-select__menu" role="listbox" :aria-label="`${label}候选帕鲁`">
-        <li
-          v-for="(pal, index) in suggestions"
-          :id="`${listId}-${index}`"
-          :key="pal.id"
-          class="pal-select__option"
-          :class="{ 'pal-select__option--active': activeIndex === index }"
-          role="option"
-          :aria-selected="model === pal.id"
-          @mousedown.prevent
-          @click="selectPal(pal)"
-        >
-          <span aria-hidden="true"><PalIcon :pal="pal" size="small" /></span>
-          <span class="pal-select__option-copy">
-            <strong>{{ pal.names.zh }}</strong>
-            <small>{{ palPinyinInitials(pal).toLocaleUpperCase() }} · {{ pal.names.en }} · {{ formatDex(pal) }} · {{ pal.id }}</small>
-          </span>
-          <span class="pal-select__option-check" aria-hidden="true">{{ model === pal.id ? "✓" : "" }}</span>
-        </li>
-        <li v-if="!suggestions.length" class="pal-select__empty" role="option" aria-disabled="true">没有匹配</li>
-      </ul>
-    </div>
+    <NSelect
+      class="field-control"
+      :value="selectedValue"
+      :options="options"
+      :filter="filterPal"
+      :render-label="renderPal"
+      :placeholder="hint"
+      :fallback-option="false"
+      :input-props="inputProps"
+      :menu-props="menuProps"
+      clearable
+      filterable
+      ignore-composition
+      show-on-focus
+      virtual-scroll
+      size="large"
+      menu-size="large"
+      @search="searchValue = $event"
+      @blur="commitSearch()"
+      @update:show="isOpen = $event"
+      @update:value="updateValue"
+    />
   </div>
 </template>

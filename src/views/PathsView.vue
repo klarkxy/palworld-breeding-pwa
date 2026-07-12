@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { storeToRefs } from "pinia";
+import { NButton, NEmpty, NSelect, NTabPane, NTabs } from "naive-ui";
+import { computed, watch } from "vue";
+import { useRoute } from "vue-router";
 import { findChains, planFromOwned } from "@/core";
 import type { BreedPlan } from "@/core";
 import BreedPlanCard from "@/components/BreedPlanCard.vue";
@@ -7,45 +10,50 @@ import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalSelect from "@/components/PalSelect.vue";
-import { useCollection } from "@/composables/useCollection";
-import { usePalData } from "@/composables/usePalData";
+import { useCollectionStore } from "@/stores/collection";
+import { usePalDataStore } from "@/stores/palData";
+import { usePathsStore } from "@/stores/paths";
 
-const { visiblePals, palById, index, isLoading, error, load } = usePalData();
-const { entries } = useCollection();
-const mode = ref<"single" | "owned">("single");
-const start = ref("");
-const target = ref("");
-const maxDepth = ref(5);
-const plans = ref<BreedPlan[]>([]);
-const hasSearched = ref(false);
+const palData = usePalDataStore();
+const collection = useCollectionStore();
+const paths = usePathsStore();
+const route = useRoute();
+const { visiblePals, palById, index, isLoading, error } = storeToRefs(palData);
+const { entries } = storeToRefs(collection);
+const { mode, start, target, maxDepth, lastRun } = storeToRefs(paths);
+const { load } = palData;
+const modes = [
+  { id: "single", label: "单起点路线", help: "每代推荐一个配偶" },
+  { id: "owned", label: "从库存规划", help: "计算所有繁育支线" },
+] as const;
+const depthOptions = Array.from({ length: 8 }, (_, index) => ({ label: `${index + 1} 代`, value: index + 1 }));
+const hasSearched = computed(() => Boolean(lastRun.value));
+const emptyDescription = computed(() => lastRun.value?.mode === "owned" && !entries.value.length
+  ? '先到"我的帕鲁"记录至少一种帕鲁。'
+  : "代数范围内没有路线，试试增加上限。");
 
-function search() {
-  hasSearched.value = true;
-  if (!index.value || !target.value) {
-    plans.value = [];
-    return;
-  }
-  if (mode.value === "single") {
-    if (!start.value) return void (plans.value = []);
-    plans.value = findChains(index.value, start.value, target.value, maxDepth.value);
-  } else {
-    plans.value = planFromOwned(index.value, entries.value, target.value, maxDepth.value);
-  }
-}
+watch([() => route.query, () => visiblePals.value.length], ([query, palCount]) => {
+  if (palCount) paths.applyRoute(query);
+}, { immediate: true });
+
+const plans = computed<BreedPlan[]>(() => {
+  const run = lastRun.value;
+  if (!index.value || !run) return [];
+  return run.mode === "single"
+    ? findChains(index.value, run.start, run.target, run.maxDepth)
+    : planFromOwned(index.value, entries.value, run.target, run.maxDepth);
+});
 </script>
 
 <template>
   <main class="page-shell">
     <PageIntro eyebrow="路线室" title="繁育路线" description="按最少繁育代数查路线；库存模式会把多条支线合成一棵完整繁育树。" />
     <DataState :is-loading :error @retry="load">
-      <div class="segmented-control segmented-control--two" aria-label="选择路径模式">
-        <button type="button" :class="{ active: mode === 'single' }" :aria-pressed="mode === 'single'" @click="mode = 'single'; plans = []; hasSearched = false">
-          <strong>单起点路线</strong><small>每代推荐一个配偶</small>
-        </button>
-        <button type="button" :class="{ active: mode === 'owned' }" :aria-pressed="mode === 'owned'" @click="mode = 'owned'; plans = []; hasSearched = false">
-          <strong>从库存规划</strong><small>计算所有繁育支线</small>
-        </button>
-      </div>
+      <NTabs v-model:value="mode" class="segmented-control segmented-control--two" type="segment" aria-label="选择路径模式" :pane-wrapper-style="{ display: 'none' }" :tab-style="{ flex: '1 1 0', justifyContent: 'center', minWidth: 0 }">
+        <NTabPane v-for="item in modes" :key="item.id" :name="item.id">
+          <template #tab><span class="mode-tab"><strong>{{ item.label }}</strong><small>{{ item.help }}</small></span></template>
+        </NTabPane>
+      </NTabs>
 
       <EggshellCard tone="coral" class="route-form">
         <div class="route-form__grid">
@@ -60,15 +68,15 @@ function search() {
           <PalSelect v-model="target" :pals="visiblePals" label="目标帕鲁" />
         </div>
         <div class="route-form__actions">
-          <label class="field field--compact depth-field"><span class="field__label">最多代数</span><select v-model.number="maxDepth"><option v-for="depth in 8" :key="depth" :value="depth">{{ depth }} 代</option></select></label>
-          <button class="button button--primary button--large" type="button" @click="search">检索最短路线</button>
+          <label class="field field--compact depth-field"><span class="field__label">最多代数</span><NSelect v-model:value="maxDepth" class="field-control" :options="depthOptions" :fallback-option="false" filterable :input-props="{ 'aria-label': '最多代数' }" size="large" /></label>
+          <NButton class="button--large" type="primary" size="large" round @click="paths.submit()">检索最短路线</NButton>
         </div>
       </EggshellCard>
 
       <section class="results-section" aria-live="polite">
         <header class="section-heading"><div><p class="eyebrow">路线结果</p><h2>{{ hasSearched ? `${plans.length} 个最短方案` : "还没有开始检索" }}</h2></div></header>
-        <div v-if="!hasSearched" class="empty-state"><span aria-hidden="true">⌇</span><p>选定起点与目标，按代展开路线。</p></div>
-        <div v-else-if="!plans.length" class="empty-state"><span aria-hidden="true">∅</span><p>{{ mode === "owned" && !entries.length ? '先到"我的帕鲁"记录至少一种帕鲁。' : "代数范围内没有路线，试试增加上限。" }}</p></div>
+        <NEmpty v-if="!hasSearched" class="empty-state" description="选定起点与目标，按代展开路线。" size="large" />
+        <NEmpty v-else-if="!plans.length" class="empty-state" :description="emptyDescription" size="large" />
         <div v-else class="plan-list">
           <p v-if="plans.length === 20" class="notice">按最少代数排序，仅显示前 20 条。</p>
           <BreedPlanCard v-for="(plan, i) in plans" :key="i" :plan :pal-by-id :number="i + 1" />
