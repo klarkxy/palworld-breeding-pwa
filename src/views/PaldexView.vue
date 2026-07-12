@@ -27,8 +27,9 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
   a.dexNo - b.dexNo || Number(a.variant) - Number(b.variant) || a.id.localeCompare(b.id, "en")));
 
 function closeDetail() {
-  if (typeof history.state?.back === "string") router.back();
-  else void router.replace("/paldex");
+  const palId = String(router.currentRoute.value.params.id ?? "");
+  document.querySelector<HTMLElement>(`.paldex-card[data-pal-id="${CSS.escape(palId)}"]`)?.focus();
+  void router.replace("/paldex");
 }
 </script>
 
@@ -48,6 +49,7 @@ function closeDetail() {
           <RouterLink
             :to="`/paldex/${encodeURIComponent(pal.id)}`"
             class="paldex-card"
+            :data-pal-id="pal.id"
             :aria-label="`${pal.names.zh} ${formatDex(pal)}，打开详细图鉴`"
             :aria-describedby="`paldex-preview-${pal.id}`"
           >

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, useTemplateRef } from "vue";
+import { computed, onMounted, onUnmounted, useTemplateRef } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
@@ -44,14 +44,22 @@ function openCalculator(kind: "parent" | "target") {
     : { path: "/breeding", query: { mode: "pairs", target: pal.value.id } });
 }
 
-onMounted(() => drawer.value?.showModal());
+function closeOnEscape(event: KeyboardEvent) {
+  if (event.key === "Escape") drawer.value?.close();
+}
+
+onMounted(() => {
+  drawer.value?.show();
+  window.addEventListener("keydown", closeOnEscape);
+});
+onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
 
 <template>
   <dialog ref="drawer" class="paldex-drawer" :aria-label="pal ? `${pal.names.zh}详细图鉴` : '帕鲁详细图鉴'" @close="emit('close')">
     <header class="paldex-drawer__topbar">
       <div><small>详细图鉴</small><strong>{{ pal?.names.zh ?? "帕鲁" }}</strong></div>
-      <form method="dialog"><button class="paldex-drawer__close" type="submit" aria-label="关闭详细图鉴" autofocus>×</button></form>
+      <form method="dialog"><button class="paldex-drawer__close" type="submit" aria-label="关闭详细图鉴">×</button></form>
     </header>
     <DataState :is-loading :error @retry="load">
       <div v-if="pal" class="paldex-detail paldex-drawer__content">

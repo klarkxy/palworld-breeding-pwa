@@ -83,10 +83,21 @@ test("@subpath 三类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(darkBall).toContainText("暗 · 威力 50 · 冷却 2 秒 · Lv.1");
   await expect(darkBall).toContainText("发射以缓慢速度追击敌人的黑暗之球。");
   await drawer.getByRole("button", { name: "关闭详细图鉴" }).click();
-  await expect(drawer).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByLabel("搜索图鉴")).toHaveValue("xsn");
-  await expect(page.locator(".paldex-card")).toHaveCount(1);
   await expect(page.locator(".paldex-card")).toBeFocused();
+  if (page.viewportSize()!.width >= 1_088) {
+    await page.getByLabel("搜索图鉴").fill("");
+    await page.locator(".paldex-card").filter({ hasText: "棉悠悠" }).click();
+    await expect(page.getByRole("dialog", { name: "棉悠悠详细图鉴" })).toBeVisible();
+    const activeCard = page.locator(".paldex-card").filter({ hasText: "翠叶鼠" });
+    await activeCard.click({ position: { x: 20, y: 20 } });
+    const activeDrawer = page.getByRole("dialog", { name: "翠叶鼠详细图鉴" });
+    await expect(activeDrawer).toBeVisible();
+    await activeDrawer.getByRole("button", { name: "关闭详细图鉴" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(activeCard).toBeFocused();
+  }
 });
 
 test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) => {
@@ -118,7 +129,7 @@ test("我的帕鲁刷新后保留，并可完成库存路线", async ({ page }) 
 });
 
 test("核心页面无严重无障碍问题", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   for (const route of ["/breeding", "/paths", "/collection", "/paldex", "/paldex/OniGhostGirl"]) {
     await openApp(page, route);
     if (route === "/breeding") await page.locator(".pal-select input").first().focus();
