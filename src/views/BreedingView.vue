@@ -1,37 +1,36 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { NButton, NCheckbox, NEmpty, NTabPane, NTabs } from "naive-ui";
+import { computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import { findMates, getChildren, getParentPairs } from "@/core";
 import type { PalId } from "@/core";
-import { useCollection } from "@/composables/useCollection";
-import { usePalData } from "@/composables/usePalData";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalChip from "@/components/PalChip.vue";
 import PalSelect from "@/components/PalSelect.vue";
+import { useBreedingStore } from "@/stores/breeding";
+import { useCollectionStore } from "@/stores/collection";
+import { usePalDataStore } from "@/stores/palData";
 
 const route = useRoute();
-const { visiblePals, palById, index, isLoading, error, load } = usePalData();
-const { entries } = useCollection();
+const palData = usePalDataStore();
+const collection = useCollectionStore();
+const breeding = useBreedingStore();
+const { visiblePals, palById, index, isLoading, error } = storeToRefs(palData);
+const { entries } = storeToRefs(collection);
+const { mode, parentA, parentB, target, ownedOnly } = storeToRefs(breeding);
+const { load } = palData;
 const modes = [
   { id: "forward", label: "A ＋ B ＝ ?", help: "两个亲本会孵出谁" },
   { id: "mate", label: "A ＋ ? ＝ B", help: "为亲本寻找配偶" },
   { id: "pairs", label: "? ＋ ? ＝ B", help: "查看目标的全部父母组合" },
 ] as const;
-type Mode = (typeof modes)[number]["id"];
 
-const mode = ref<Mode>((route.query.mode as Mode) || "forward");
-const parentA = ref(typeof route.query.a === "string" ? route.query.a : "");
-const parentB = ref("");
-const target = ref(typeof route.query.target === "string" ? route.query.target : "");
-const ownedOnly = ref(false);
-
-watch(() => route.query, (query) => {
-  if (typeof query.a === "string") parentA.value = query.a;
-  if (typeof query.target === "string") target.value = query.target;
-  if (query.mode === "forward" || query.mode === "mate" || query.mode === "pairs") mode.value = query.mode;
-});
+watch([() => route.query, () => visiblePals.value.length], ([query, palCount]) => {
+  if (palCount) breeding.applyRoute(query);
+}, { immediate: true });
 
 interface Recipe {
   a: PalId;
@@ -83,11 +82,11 @@ function swapParents() {
   <main class="page-shell">
     <PageIntro eyebrow="育种台" title="配种计算" description="正向算子代、反查配偶，或一次查看目标帕鲁的全部父母组合。" />
     <DataState :is-loading :error @retry="load">
-      <div class="segmented-control" aria-label="选择计算方式">
-        <button v-for="item in modes" :key="item.id" type="button" :class="{ active: mode === item.id }" :aria-pressed="mode === item.id" @click="mode = item.id">
-          <strong>{{ item.label }}</strong><small>{{ item.help }}</small>
-        </button>
-      </div>
+      <NTabs v-model:value="mode" class="segmented-control" type="segment" aria-label="选择计算方式" :pane-wrapper-style="{ display: 'none' }" :tab-style="{ flex: '1 1 0', justifyContent: 'center', minWidth: 0 }">
+        <NTabPane v-for="item in modes" :key="item.id" :name="item.id">
+          <template #tab><span class="mode-tab"><strong>{{ item.label }}</strong><small>{{ item.help }}</small></span></template>
+        </NTabPane>
+      </NTabs>
 
       <EggshellCard tone="sky" class="calculator-shell">
         <div class="calculator-fields">
@@ -95,7 +94,7 @@ function swapParents() {
             <PalSelect v-model="parentA" :pals="visiblePals" label="亲本 A" />
           </div>
 
-          <button v-if="mode === 'forward'" class="swap-button" type="button" aria-label="交换两个亲本" @click="swapParents">⇄</button>
+          <NButton v-if="mode === 'forward'" class="swap-button" circle aria-label="交换两个亲本" @click="swapParents">⇄</NButton>
           <span v-else-if="mode === 'mate'" class="equation-mark" aria-hidden="true">＋ ? ＝</span>
           <span v-else class="equation-mark" aria-hidden="true">? ＋ ? ＝</span>
 
@@ -104,10 +103,7 @@ function swapParents() {
           </div>
           <PalSelect v-else v-model="target" :pals="visiblePals" label="目标子代 B" />
         </div>
-        <label v-if="mode === 'pairs'" class="check-row">
-          <input v-model="ownedOnly" type="checkbox" />
-          只看库存中可直接配对的组合
-        </label>
+        <NCheckbox v-if="mode === 'pairs'" v-model:checked="ownedOnly" class="check-row">只看库存中可直接配对的组合</NCheckbox>
       </EggshellCard>
 
       <section class="results-section" aria-live="polite">
@@ -116,8 +112,8 @@ function swapParents() {
           <span v-if="isReady" class="result-count">{{ results.length }}</span>
         </header>
 
-        <div v-if="!isReady" class="empty-state"><span aria-hidden="true">🥚</span><p>选好帕鲁后查看结果。</p></div>
-        <div v-else-if="!results.length" class="empty-state"><span aria-hidden="true">⌁</span><p>当前组合没有可行配方。</p></div>
+        <NEmpty v-if="!isReady" class="empty-state" description="选好帕鲁后查看结果。" size="large" />
+        <NEmpty v-else-if="!results.length" class="empty-state" description="当前组合没有可行配方。" size="large" />
         <ol v-else class="recipe-list">
           <li v-for="match in results" :key="match.key" class="recipe-row">
             <PalChip :pal="palById.get(match.a)" />

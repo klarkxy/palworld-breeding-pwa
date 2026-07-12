@@ -1,21 +1,32 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { NCheckbox, NEmpty, NInput, NRadioButton, NRadioGroup } from "naive-ui";
+import { useRoute } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalIcon from "@/components/PalIcon.vue";
-import { useCollection } from "@/composables/useCollection";
-import { formatDex, palMatchesSearch, usePalData } from "@/composables/usePalData";
+import { formatDex, palMatchesSearch } from "@/composables/usePalData";
+import { useCollectionStore } from "@/stores/collection";
+import { usePalDataStore } from "@/stores/palData";
 
-const { visiblePals, isLoading, error, load } = usePalData();
-const { entries, cleanedCount, setOwned } = useCollection();
-const query = ref("");
-const view = ref<"all" | "owned">("all");
+const palData = usePalDataStore();
+const collection = useCollectionStore();
+const route = useRoute();
+const { visiblePals, isLoading, error } = storeToRefs(palData);
+const { entries, cleanedCount, query, view } = storeToRefs(collection);
+const { load } = palData;
+const { setOwned } = collection;
 
 const ownedIds = computed(() => new Set(entries.value.map((entry) => entry.palId)));
 const filteredPals = computed(() => visiblePals.value.filter((pal) => {
   if (view.value === "owned" && !ownedIds.value.has(pal.id)) return false;
   return palMatchesSearch(pal, query.value);
 }));
+
+watch([() => route.query, () => visiblePals.value.length], ([routeQuery, palCount]) => {
+  if (palCount) collection.applyRoute(routeQuery);
+}, { immediate: true });
 </script>
 
 <template>
@@ -29,11 +40,11 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
       </section>
 
       <div class="filter-bar">
-        <label class="field filter-search"><span class="field__label">搜索帕鲁</span><input v-model="query" type="search" placeholder="中文 / 拼音首字母 / English / 编号 / ID" /></label>
-        <div class="mini-tabs" aria-label="库存筛选">
-          <button type="button" :aria-pressed="view === 'all'" :class="{ active: view === 'all' }" @click="view = 'all'">全部</button>
-          <button type="button" :aria-pressed="view === 'owned'" :class="{ active: view === 'owned' }" @click="view = 'owned'">已记录</button>
-        </div>
+        <label class="field filter-search"><span class="field__label">搜索帕鲁</span><NInput v-model:value="query" class="field-control" clearable size="large" placeholder="中文 / 拼音首字母 / English / 编号 / ID" :input-props="{ type: 'search', 'aria-label': '搜索帕鲁' }" /></label>
+        <NRadioGroup v-model:value="view" class="mini-tabs" name="collection-view" aria-label="库存筛选">
+          <NRadioButton class="mini-tabs__option" value="all">全部</NRadioButton>
+          <NRadioButton class="mini-tabs__option" value="owned">已记录</NRadioButton>
+        </NRadioGroup>
       </div>
 
       <p class="result-note">显示 {{ filteredPals.length }} 种，勾选即保存。</p>
@@ -45,11 +56,11 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
           </RouterLink>
           <fieldset>
             <legend class="sr-only">{{ pal.names.zh }}库存状态</legend>
-            <label class="owned-toggle"><input type="checkbox" :aria-label="`${pal.names.zh}已拥有`" :checked="ownedIds.has(pal.id)" @change="setOwned(pal.id, ($event.target as HTMLInputElement).checked)" /><span>已拥有</span></label>
+            <NCheckbox class="owned-toggle" :class="{ 'owned-toggle--checked': ownedIds.has(pal.id) }" :checked="ownedIds.has(pal.id)" @update:checked="setOwned(pal.id, $event)"><span class="sr-only">{{ pal.names.zh }}</span>已拥有</NCheckbox>
           </fieldset>
         </li>
       </ul>
-      <div v-if="!filteredPals.length" class="empty-state"><span aria-hidden="true">⌕</span><p>没有匹配的帕鲁。</p></div>
+      <NEmpty v-if="!filteredPals.length" class="empty-state" description="没有匹配的帕鲁。" />
     </DataState>
   </main>
 </template>

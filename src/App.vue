@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { watch } from "vue";
+import { computed, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { NAlert, NButton, NConfigProvider, zhCN } from "naive-ui";
+import type { GlobalThemeOverrides } from "naive-ui";
 import { useRegisterSW } from "virtual:pwa-register/vue";
-import { useCollection } from "@/composables/useCollection";
-import { isSelectablePal, usePalData } from "@/composables/usePalData";
+import { isSelectablePal } from "@/composables/usePalData";
+import { useBreedingStore } from "@/stores/breeding";
+import { useCollectionStore } from "@/stores/collection";
+import { usePalDataStore } from "@/stores/palData";
+import { usePaldexStore } from "@/stores/paldex";
+import { usePathsStore } from "@/stores/paths";
 
-const { manifest, pals, load } = usePalData();
-const { initialize } = useCollection();
+const palData = usePalDataStore();
+const collection = useCollectionStore();
+const breeding = useBreedingStore();
+const paths = usePathsStore();
+const paldex = usePaldexStore();
+const { manifest, pals } = storeToRefs(palData);
+const persistenceError = computed(() => collection.persistenceError || breeding.persistenceError || paths.persistenceError || paldex.persistenceError);
 const { needRefresh, updateServiceWorker } = useRegisterSW();
 const licenseUrl = `${import.meta.env.BASE_URL}LICENSE.txt`;
 const noticesUrl = `${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`;
@@ -15,6 +27,71 @@ const navigation = [
   { to: "/collection", label: "我的", icon: "◇" },
   { to: "/paldex", label: "图鉴", icon: "▦" },
 ];
+const themeOverrides: GlobalThemeOverrides = {
+  common: {
+    primaryColor: "#173c4a",
+    primaryColorHover: "#08708f",
+    primaryColorPressed: "#075d76",
+    primaryColorSuppl: "#18a8d2",
+    textColorBase: "#173c4a",
+    textColor1: "#173c4a",
+    textColor2: "#54717b",
+    borderColor: "#c8e2e9",
+    borderRadius: "14px",
+    fontFamily: '"Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif',
+    fontFamilyMono: 'Bahnschrift, "Segoe UI", sans-serif',
+    fontSize: "16px",
+    fontSizeMedium: "16px",
+    fontSizeLarge: "16px",
+    heightMedium: "48px",
+    heightLarge: "48px",
+  },
+  Button: {
+    heightMedium: "44px",
+    heightLarge: "52px",
+    fontSizeMedium: "16px",
+    fontSizeLarge: "17px",
+    borderRadiusMedium: "999px",
+    borderRadiusLarge: "999px",
+  },
+  Input: {
+    heightMedium: "48px",
+    heightLarge: "48px",
+    fontSizeMedium: "16px",
+    fontSizeLarge: "16px",
+    borderRadius: "14px",
+  },
+  Tabs: {
+    colorSegment: "rgba(255,255,255,.58)",
+    tabColorSegment: "#173c4a",
+    tabTextColorSegment: "#173c4a",
+    tabTextColorActiveSegment: "#ffffff",
+    tabTextColorHoverSegment: "#08708f",
+    tabFontSizeMedium: "16px",
+    tabPaddingMediumSegment: "14px 8px",
+    tabBorderRadius: "16px",
+  },
+  Radio: {
+    buttonHeightMedium: "44px",
+    fontSizeMedium: "16px",
+    buttonColorActive: "#ffffff",
+    buttonTextColorActive: "#08708f",
+    buttonBorderColorActive: "#18a8d2",
+    buttonBorderRadius: "12px",
+  },
+  Checkbox: {
+    fontSizeMedium: "16px",
+    sizeMedium: "20px",
+  },
+  Drawer: {
+    color: "#fffdf7",
+    textColor: "#173c4a",
+    headerPadding: "0",
+    bodyPadding: "0",
+    headerBorderBottom: "1px solid #c8e2e9",
+    boxShadow: "-24px 0 54px rgba(23,60,74,.28)",
+  },
+};
 
 function focusMain() {
   const main = document.querySelector<HTMLElement>("#main-view main");
@@ -23,15 +100,24 @@ function focusMain() {
   main.focus();
 }
 
-load();
+palData.load();
 watch([manifest, pals], ([nextManifest, nextPals]) => {
   if (nextManifest && nextPals.length) {
-    initialize(new Set(nextPals.filter(isSelectablePal).map((pal) => pal.id)), nextManifest.dataVersion);
+    const visible = nextPals.filter(isSelectablePal);
+    const validIds = new Set(visible.map((pal) => pal.id));
+    collection.initialize(validIds, nextManifest.dataVersion);
+    breeding.sanitize(validIds);
+    paths.sanitize(validIds);
+    paldex.sanitize(
+      new Set(visible.flatMap((pal) => pal.elements)),
+      new Set(visible.flatMap((pal) => Object.keys(pal.workSuitability))),
+    );
   }
 }, { immediate: true });
 </script>
 
 <template>
+  <NConfigProvider abstract :locale="zhCN" :theme-overrides="themeOverrides" preflight-style-disabled>
   <a class="skip-link" href="#main-view" @click.prevent="focusMain">跳到主要内容</a>
   <div class="app-backdrop" aria-hidden="true"><span /><span /><span /></div>
   <header class="site-header">
@@ -66,8 +152,11 @@ watch([manifest, pals], ([nextManifest, nextPals]) => {
     <p><a :href="licenseUrl">项目许可证（SATA-2.0）</a> · <a :href="noticesUrl">第三方许可与声明</a></p>
   </footer>
 
-  <aside v-if="needRefresh" class="update-toast" role="status">
-    <div><strong>新配种数据已就绪</strong><p>刷新后再继续计算，避免使用旧配方。</p></div>
-    <button class="button button--primary" type="button" @click="updateServiceWorker(true)">立即刷新</button>
-  </aside>
+  <NAlert v-if="needRefresh" class="update-toast" type="info" title="新配种数据已就绪" :show-icon="false">
+    <div class="update-toast__content"><p>刷新后再继续计算，避免使用旧配方。</p><NButton type="primary" round @click="updateServiceWorker(true)">立即刷新</NButton></div>
+  </NAlert>
+  <NAlert v-else-if="persistenceError" class="update-toast" type="warning" title="本次更改无法保存" :show-icon="false">
+    本地数据格式异常，或浏览器拒绝了存储访问；当前页面仍可继续使用，下一次修改时会重新尝试保存。
+  </NAlert>
+  </NConfigProvider>
 </template>
