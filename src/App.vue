@@ -25,6 +25,7 @@ const navigation = [
   { to: "/breeding", label: "配种", icon: "⊕" },
   { to: "/paths", label: "路线", icon: "⌁" },
   { to: "/paldex", label: "图鉴", icon: "▦" },
+  { to: "/passives", label: "词条", icon: "✦" },
 ];
 const themeOverrides: GlobalThemeOverrides = {
   common: {

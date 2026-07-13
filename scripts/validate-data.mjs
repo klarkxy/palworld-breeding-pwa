@@ -19,10 +19,12 @@ const pals = paldex.pals;
 const rules = breeding.rules;
 const activeSkills = skills.activeSkills;
 const partnerSkills = skills.partnerSkills;
+const passiveSkills = skills.passiveSkills;
 assert(pals.length === 306, `Expected 306 Pals, got ${pals.length}`);
 assert(rules.length === 46_972, `Expected 46972 rules, got ${rules.length}`);
 assert(activeSkills.length === 320, `Expected 320 active skills, got ${activeSkills.length}`);
 assert(partnerSkills.length === 288, `Expected 288 partner skills, got ${partnerSkills.length}`);
+assert(passiveSkills.length === 115, `Expected 115 passive skills, got ${passiveSkills.length}`);
 assert(JSON.stringify(breeding.pals) === JSON.stringify(pals), "Paldex and breeding Pal records differ");
 
 const palIds = new Set(pals.map((pal) => pal.id));
@@ -30,6 +32,7 @@ const ruleIds = new Set(rules.map((rule) => rule.id));
 const selectableIds = new Set(pals.filter((pal) => pal.selectable).map((pal) => pal.id));
 const activeById = new Map(activeSkills.map((skill) => [skill.id, skill]));
 const partnerById = new Map(partnerSkills.map((skill) => [skill.id, skill]));
+const passiveById = new Map(passiveSkills.map((skill) => [skill.id, skill]));
 const movementFields = [
   "slowWalkSpeed", "walkSpeed", "runSpeed", "rideSprintSpeed",
   "transportSpeed", "swimSpeed", "swimDashSpeed",
@@ -39,6 +42,7 @@ assert(palIds.size === pals.length, "Duplicate Pal ID");
 assert(ruleIds.size === rules.length, "Duplicate rule ID");
 assert(activeById.size === activeSkills.length, "Duplicate active-skill ID");
 assert(partnerById.size === partnerSkills.length, "Duplicate partner-skill ID");
+assert(passiveById.size === passiveSkills.length, "Duplicate passive-skill ID");
 assert(selectableIds.size === 288, `Expected 288 selectable Pals, got ${selectableIds.size}`);
 for (const skill of activeSkills) {
   assert(skill.names?.zh && skill.names?.en, `Missing active-skill name: ${skill.id}`);
@@ -53,6 +57,37 @@ assert(JSON.stringify(missingActiveDescriptions) === JSON.stringify(["PredatorBe
   `Unexpected active-skill description gaps: ${missingActiveDescriptions.join(", ")}`);
 for (const skill of partnerSkills)
   assert(skill.name && skill.description, `Incomplete partner skill: ${skill.id}`);
+const passiveRankCounts = new Map([[-3, 3], [-2, 2], [-1, 10], [1, 36], [2, 2], [3, 31], [4, 24], [5, 7]]);
+for (const skill of passiveSkills) {
+  assert(skill.names?.zh && skill.names?.en, `Missing passive-skill name: ${skill.id}`);
+  assert(skill.description?.zh && skill.description?.en, `Missing passive-skill description: ${skill.id}`);
+  assert(Number.isInteger(skill.rank) && passiveRankCounts.has(skill.rank), `Invalid passive-skill rank: ${skill.id}`);
+  assert(typeof skill.randomlyAvailable === "boolean", `Invalid passive-skill random flag: ${skill.id}`);
+  assert(Number.isInteger(skill.randomWeight) && [5, 100].includes(skill.randomWeight),
+    `Invalid passive-skill random weight: ${skill.id}`);
+  assert(Number.isInteger(skill.surgeryCost) && skill.surgeryCost >= 0,
+    `Invalid passive-skill surgery cost: ${skill.id}`);
+  assert(skill.surgeryItem === undefined || (typeof skill.surgeryItem === "string" && skill.surgeryItem.length > 0),
+    `Invalid passive-skill surgery item: ${skill.id}`);
+  assert(Array.isArray(skill.guaranteedBy), `Missing guaranteed Pal list: ${skill.id}`);
+  assert(new Set(skill.guaranteedBy).size === skill.guaranteedBy.length,
+    `Duplicate guaranteed Pal: ${skill.id}`);
+  assert(skill.guaranteedBy.every((palId) => selectableIds.has(palId)),
+    `Hidden or missing guaranteed Pal: ${skill.id}`);
+}
+for (const [rank, count] of passiveRankCounts)
+  assert(passiveSkills.filter((skill) => skill.rank === rank).length === count,
+    `Unexpected passive-skill rank ${rank} count`);
+assert(passiveSkills.filter((skill) => skill.randomlyAvailable).length === 85,
+  "Unexpected randomly available passive-skill count");
+assert(passiveSkills.filter((skill) => skill.surgeryCost > 0).length === 33,
+  "Unexpected surgery-supported passive-skill count");
+assert(passiveSkills.filter((skill) => skill.surgeryItem).length === 35,
+  "Unexpected passive-skill surgery-item count");
+assert(passiveSkills.filter((skill) => skill.guaranteedBy.length > 0).length === 23,
+  "Unexpected guaranteed passive-skill count");
+assert(passiveSkills.reduce((total, skill) => total + skill.guaranteedBy.length, 0) === 53,
+  "Unexpected guaranteed passive assignment count");
 const ruleSignatures = new Set();
 const placeholderIds = new Set();
 const iconHash = createHash("sha256");
@@ -157,6 +192,13 @@ assert(manifest.counts.icons === pals.length, "Manifest icon count mismatch");
 assert(manifest.counts.gameIcons === 303 && manifest.counts.placeholderIcons === 3, "Manifest icon source counts mismatch");
 assert(manifest.counts.activeSkills === activeSkills.length, "Manifest active-skill count mismatch");
 assert(manifest.counts.partnerSkills === partnerSkills.length, "Manifest partner-skill count mismatch");
+assert(manifest.counts.passiveSkillSourceRows === 1_905, "Manifest passive source-row count mismatch");
+assert(manifest.counts.passiveSkills === passiveSkills.length, "Manifest passive-skill count mismatch");
+assert(manifest.counts.randomlyAvailablePassiveSkills === 85,
+  "Manifest randomly available passive-skill count mismatch");
+assert(manifest.counts.guaranteedPassiveSkills === 23, "Manifest guaranteed passive-skill count mismatch");
+assert(manifest.counts.guaranteedPassiveAssignments === 53,
+  "Manifest guaranteed passive assignment count mismatch");
 assert(manifest.counts.movementRecords === pals.length, "Manifest movement-record count mismatch");
 assert(manifest.counts.selectableMovementTypes === selectableIds.size, "Manifest movement-type count mismatch");
 assert(JSON.stringify(manifest.counts.movementTypes) === JSON.stringify({ ground: 252, fly: 21, flyAndLanding: 7, swim: 8 }),
@@ -170,7 +212,7 @@ assert(manifest.checksums.breeding === await digest("breeding.json"), "Breeding 
 assert(manifest.checksums.paldex === await digest("paldex.json"), "Paldex checksum mismatch");
 assert(manifest.checksums.skills === await digest("skills.json"), "Skills checksum mismatch");
 assert(manifest.checksums.icons === iconHash.digest("hex"), "Icon bundle checksum mismatch");
-assert(manifest.dataVersion.endsWith("-skills1-movement1-refinement1"), `Unexpected data version: ${manifest.dataVersion}`);
+assert(manifest.dataVersion.endsWith("-skills2-movement1-refinement1"), `Unexpected data version: ${manifest.dataVersion}`);
 for (const [name, file] of [["activeSkillOverrides", "active-skill-overrides.zh-Hans.json"], ["partnerSkills", "partner-skills.zh-Hans.json"]]) {
   const path = resolve(root, "scripts/vendor/paldb", file);
   const snapshot = JSON.parse(await readFile(path, "utf8"));
@@ -244,4 +286,4 @@ assert(manifest.sources.localGameRefinement.snapshotSha256
 assert(manifest.sources.localGameRefinement.rawArtifactSha256.special
   === "ca856bba482d8c2988d17dccde30880f49d0e4336e0260f68cd3e908febd3ae5",
 "Special refinement source hash mismatch");
-console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, and ${manifest.counts.icons} icons.`);
+console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, ${passiveSkills.length} passive skills, and ${manifest.counts.icons} icons.`);

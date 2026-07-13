@@ -16,7 +16,7 @@ The project's original code is licensed under the Star And Thank Author License 
 - Repository: <https://github.com/tylercamp/palcalc>
 - Snapshot: tag `v1.17.2`, commit `b5e13e90fedc2e95d54fa223da77be464c313001`
 - Data blobs: `db.json` `c9a010f3c4a93957251b6d5d1b9bc1b244256200`; `breeding.json` `2dc04d319bc2de89691031a0a4456aaa55882461`
-- Use: authoritative Pal identity, breeding, gender probability, localization, base-stat data, and active-skill element/power/cooldown metadata.
+- Use: authoritative Pal identity, breeding, gender probability, localization, base-stat data, active-skill element/power/cooldown metadata, and the player-facing passive-trait catalog. The pinned database contains 1,905 internal passive rows; the application publishes only the 115 rows explicitly marked as standard passive skills with complete simplified-Chinese/English names and descriptions. Rank, random-pool availability and weight, surgery fields, and guaranteed-carrier links remain derived from this same snapshot.
 - Icons: `PalCalc.UI/Resources/Pals` at the same tag, renamed to internal IDs; these game-derived images are excluded from this project's SATA license.
 - License: MIT-style license, Copyright 2024 Tyler Camp. The repository license covers its software; it does not transfer Pocketpair's rights in extracted game data.
 
@@ -54,6 +54,7 @@ The project's original code is licensed under the Star And Thank Author License 
 ## Locally extracted Palworld refinement snapshot
 
 - Source: the same legally installed local Steam copy of Palworld `1.0`, build `24088745`; `Pal-Windows.pak`, `BP_PalGameSetting`, partner/passive-skill tables, common Pal parameters, character Blueprints, ranch item lotteries, and glider components.
+- Passive-table scope: both extracted passive tables contain 1,905 internal rows. They include partner-skill parameters and other internal mechanics and therefore are not presented as 1,905 player-facing traits; the published 115-trait catalog is selected from the pinned PalCalc database as described above.
 - Checked-in normalized snapshot: `scripts/vendor/palworld/refinement-v1.json`, covering the 0-star and 4-star endpoints of all 288 selectable Pal IDs. It contains 270 five-rank table records and 18 Blueprint/ranch/glider/constant special records.
 - Raw SHA-256 values: partner table `821d03bf847beb790704be96f6adcf208c2715a18fa038e66fad0294e3e338c9`; passive table `5e5b31e42c08c39dd98a31f2c4f7cf01205e3fa6dced01762154fb0ed3012a34`; common passive table `93df6bcf7f01224230746de98a62553017cf5596424238d80a35c107ff148072`; common Pal table `dd4635e3fca3e8d6e0cafc173fd2fccfe7097a876b34940c77390a36e8244780`; normalized special-case evidence `ca856bba482d8c2988d17dccde30880f49d0e4336e0260f68cd3e908febd3ae5`.
 - Semantics: Rank 1/index 0 is 0 stars and Rank 5/index 4 is 4 stars. Numeric fields without a proven unit are retained as internal values. The detailed first-three-star work allocation is a deterministic inference from the official 1.0 rule and current runtime endpoint checks; it is identified as such in the README and UI.

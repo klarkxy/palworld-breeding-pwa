@@ -4,13 +4,18 @@ import { describe, expect, it } from "vitest";
 import {
   buildBreedingIndex, getChildren,
   type ActiveSkillRecord, type BreedRule, type PalRecord, type PartnerSkillRecord,
+  type PassiveSkillRecord,
 } from "../../src/core";
 import { elementIcon, palMatchesSearch, palPinyinInitials } from "../../src/composables/usePalData";
 
 const read = <T>(name: string): T => JSON.parse(readFileSync(resolve("public/data", name), "utf8")) as T;
 const pals = read<{ pals: PalRecord[] }>("paldex.json").pals;
 const rules = read<{ rules: BreedRule[] }>("breeding.json").rules;
-const skills = read<{ activeSkills: ActiveSkillRecord[]; partnerSkills: PartnerSkillRecord[] }>("skills.json");
+const skills = read<{
+  activeSkills: ActiveSkillRecord[];
+  partnerSkills: PartnerSkillRecord[];
+  passiveSkills: PassiveSkillRecord[];
+}>("skills.json");
 const pairKey = (a: string, b: string) => a < b ? `${a}\0${b}` : `${b}\0${a}`;
 
 describe("Palworld 1.0 generated data", () => {
@@ -108,6 +113,51 @@ describe("Palworld 1.0 generated data", () => {
     expect(activeById.get("Unique_CubeTurtle_CubePress")?.description?.zh)
       .toContain("重岩龟的专用技能");
     expect(partnerById.get("OniGhostGirl")?.name).toBe("播撒欢笑的亡者");
+  });
+
+  it("keeps the complete player-facing passive-skill catalog", () => {
+    expect(skills.passiveSkills).toHaveLength(115);
+    expect(new Set(skills.passiveSkills.map((skill) => skill.id)).size).toBe(115);
+    expect(skills.passiveSkills.every((skill) =>
+      skill.names.zh && skill.names.en && skill.description.zh && skill.description.en)).toBe(true);
+    expect(Object.fromEntries([-3, -2, -1, 1, 2, 3, 4, 5].map((rank) => [
+      rank,
+      skills.passiveSkills.filter((skill) => skill.rank === rank).length,
+    ]))).toEqual({ "-3": 3, "-2": 2, "-1": 10, 1: 36, 2: 2, 3: 31, 4: 24, 5: 7 });
+    expect(skills.passiveSkills.filter((skill) => skill.randomlyAvailable)).toHaveLength(85);
+    expect(skills.passiveSkills.filter((skill) => skill.surgeryCost > 0)).toHaveLength(33);
+    expect(skills.passiveSkills.filter((skill) => skill.surgeryItem)).toHaveLength(35);
+
+    const passiveById = new Map(skills.passiveSkills.map((skill) => [skill.id, skill]));
+    expect(passiveById.get("Legend")).toMatchObject({
+      names: { zh: "传说", en: "Legend" },
+      description: {
+        zh: "攻击+20%\n防御+20%\n移动速度提升20%",
+        en: "Attack +20%\nDefense +20%\nMovement Speed increases 20%",
+      },
+      rank: 4,
+      randomlyAvailable: false,
+      randomWeight: 100,
+    });
+    expect(passiveById.get("Legend")?.guaranteedBy.length).toBeGreaterThan(0);
+    expect(passiveById.get("CraftSpeed_up3")).toMatchObject({
+      names: { zh: "卓绝技艺", en: "Remarkable Craftsmanship" },
+      description: { zh: "工作速度 +75%", en: "Work Speed +75%" },
+      rank: 4,
+      randomlyAvailable: true,
+      randomWeight: 5,
+      surgeryCost: 0,
+      surgeryItem: "PalPassiveSkillChange_Consumable_CraftSpeed_up3",
+    });
+    expect(passiveById.get("CraftSpeed_down2")).toMatchObject({
+      names: { zh: "偷懒成瘾", en: "Slacker" },
+      rank: -3,
+    });
+    expect(passiveById.get("WorldTree_ATK")).toMatchObject({
+      names: { zh: "双刃圣剑", en: "Twin-Edged Holy Blade" },
+      rank: 5,
+      randomlyAvailable: false,
+    });
   });
 
   it("keeps exact zero-star and four-star refinement endpoints", () => {

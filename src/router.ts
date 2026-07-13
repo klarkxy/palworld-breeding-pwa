@@ -9,6 +9,7 @@ export const router = createRouter({
     { path: "/", redirect: "/breeding" },
     { path: "/breeding", name: "breeding", component: () => import("@/views/BreedingView.vue"), meta: { title: "配种计算" } },
     { path: "/paths", name: "paths", component: () => import("@/views/PathsView.vue"), meta: { title: "繁育路线" } },
+    { path: "/passives", name: "passives", component: () => import("@/views/PassivesView.vue"), meta: { title: "词条图鉴" } },
     {
       path: "/collection",
       redirect: (to) => ({

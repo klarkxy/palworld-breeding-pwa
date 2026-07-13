@@ -17,7 +17,7 @@ export default defineConfig({
       manifest: {
         name: '帕鲁孵化实验室',
         short_name: '帕鲁配种',
-        description: '幻兽帕鲁 1.0 配种计算、最短繁育路径与实用图鉴',
+        description: '幻兽帕鲁 1.0 配种计算、最短繁育路径、帕鲁图鉴与被动词条图鉴',
         theme_color: '#0e5265',
         background_color: '#f8f5ec',
         display: 'standalone',

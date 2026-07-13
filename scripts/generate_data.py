@@ -19,6 +19,14 @@ EXPECTED_PALS = 306
 EXPECTED_RULES = 46_972
 EXPECTED_ACTIVE_SKILLS = 320
 EXPECTED_PARTNER_SKILLS = 288
+EXPECTED_PASSIVE_SOURCE_ROWS = 1_905
+EXPECTED_PASSIVE_SKILLS = 115
+EXPECTED_RANDOMLY_AVAILABLE_PASSIVE_SKILLS = 85
+EXPECTED_PASSIVE_RANKS = {-3: 3, -2: 2, -1: 10, 1: 36, 2: 2, 3: 31, 4: 24, 5: 7}
+EXPECTED_SURGERY_PASSIVE_SKILLS = 33
+EXPECTED_SURGERY_ITEM_PASSIVE_SKILLS = 35
+EXPECTED_GUARANTEED_PASSIVE_SKILLS = 23
+EXPECTED_GUARANTEED_PASSIVE_ASSIGNMENTS = 53
 EXPECTED_REFINEMENT_TABLE_RANKED = 270
 EXPECTED_REFINEMENT_TABLE_CHANGED = 258
 EXPECTED_SAVEPAL_GAP = {"DarkMutant"}
@@ -88,6 +96,11 @@ def json_bytes(value: Any) -> bytes:
 
 def sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def text_file_sha256(path: Path) -> str:
+    """Hash checked-in text independently of Git's Windows line-ending checkout."""
+    return sha256(path.read_bytes().replace(b"\r\n", b"\n"))
 
 
 def icon_bundle_sha256(pals: list[dict[str, Any]]) -> str:
@@ -248,17 +261,97 @@ def build_skill_catalog(
         }
         for entry in partner_source["entries"]
     ]
+    passive_sources = [
+        source for source in db["PassiveSkills"] if source["IsStandardPassiveSkill"]
+    ]
+    passive_ids = {source["InternalName"] for source in passive_sources}
+    visible_pal_sources = sorted(
+        (
+            pal
+            for pal in db["Pals"]
+            if 0 < int(pal["Id"]["PalDexNo"]) < 10_000
+        ),
+        key=lambda pal: (int(pal["InternalIndex"]), pal["InternalName"]),
+    )
+    guaranteed_by: dict[str, list[str]] = {
+        passive_id: [] for passive_id in passive_ids
+    }
+    guaranteed_ids = {
+        passive_id
+        for pal in visible_pal_sources
+        for passive_id in pal["GuaranteedPassivesInternalIds"]
+    }
+    assert guaranteed_ids <= passive_ids, (
+        f"Visible Pals reference non-standard passives: {sorted(guaranteed_ids - passive_ids)}"
+    )
+    for pal in visible_pal_sources:
+        for passive_id in pal["GuaranteedPassivesInternalIds"]:
+            guaranteed_by[passive_id].append(pal["InternalName"])
+
+    passive_skills: list[dict[str, Any]] = []
+    for source in passive_sources:
+        passive = {
+            "id": source["InternalName"],
+            "names": {
+                "zh": source["LocalizedNames"]["zh-Hans"],
+                "en": source["LocalizedNames"]["en"],
+            },
+            "description": {
+                "zh": source["LocalizedDescriptions"]["zh-Hans"],
+                "en": source["LocalizedDescriptions"]["en"],
+            },
+            "rank": source["Rank"],
+            "randomlyAvailable": source["RandomInheritanceAllowed"],
+            "randomWeight": source["RandomInheritanceWeight"],
+            "surgeryCost": source["SurgeryCost"],
+            "guaranteedBy": guaranteed_by[source["InternalName"]],
+        }
+        if source["SurgeryRequiredItem"]:
+            passive["surgeryItem"] = source["SurgeryRequiredItem"]
+        passive_skills.append(passive)
+
     assert len(active_skills) == EXPECTED_ACTIVE_SKILLS
     assert len({skill["id"] for skill in active_skills}) == EXPECTED_ACTIVE_SKILLS
     assert len(partner_skills) == EXPECTED_PARTNER_SKILLS
     assert len({skill["id"] for skill in partner_skills}) == EXPECTED_PARTNER_SKILLS
+    assert len(db["PassiveSkills"]) == EXPECTED_PASSIVE_SOURCE_ROWS
+    assert len(passive_skills) == EXPECTED_PASSIVE_SKILLS
+    assert len({skill["id"] for skill in passive_skills}) == EXPECTED_PASSIVE_SKILLS
+    assert all(
+        skill["names"][language] and skill["description"][language]
+        for skill in passive_skills
+        for language in ("zh", "en")
+    )
+    assert {
+        rank: sum(skill["rank"] == rank for skill in passive_skills)
+        for rank in EXPECTED_PASSIVE_RANKS
+    } == EXPECTED_PASSIVE_RANKS
+    assert sum(
+        skill["randomlyAvailable"] for skill in passive_skills
+    ) == EXPECTED_RANDOMLY_AVAILABLE_PASSIVE_SKILLS
+    assert sum(
+        skill["surgeryCost"] > 0 for skill in passive_skills
+    ) == EXPECTED_SURGERY_PASSIVE_SKILLS
+    assert sum(
+        bool(skill.get("surgeryItem")) for skill in passive_skills
+    ) == EXPECTED_SURGERY_ITEM_PASSIVE_SKILLS
+    assert sum(
+        bool(skill["guaranteedBy"]) for skill in passive_skills
+    ) == EXPECTED_GUARANTEED_PASSIVE_SKILLS
+    assert sum(
+        len(skill["guaranteedBy"]) for skill in passive_skills
+    ) == EXPECTED_GUARANTEED_PASSIVE_ASSIGNMENTS
     assert {
         skill["id"] for skill in active_skills if "description" not in skill
     } == EXPECTED_UNDESCRIBED_ACTIVE_SKILLS
     active_by_id = {skill["id"]: skill for skill in active_skills}
     partner_by_id = {skill["id"]: skill for skill in partner_skills}
     return (
-        {"activeSkills": active_skills, "partnerSkills": partner_skills},
+        {
+            "activeSkills": active_skills,
+            "partnerSkills": partner_skills,
+            "passiveSkills": passive_skills,
+        },
         active_by_id,
         partner_by_id,
     )
@@ -489,7 +582,7 @@ def main() -> None:
 
     manifest = {
         "gameVersion": "1.0",
-        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}-skills1-movement1-refinement1",
+        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}-skills2-movement1-refinement1",
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "sources": {
             "palcalc": {
@@ -520,27 +613,27 @@ def main() -> None:
             },
             "localGameMovement": {
                 **movement_source["source"],
-                "snapshotSha256": sha256(movement_path.read_bytes()),
+                "snapshotSha256": text_file_sha256(movement_path),
             },
             "localGameRefinement": {
                 **refinement_source["source"],
-                "snapshotSha256": sha256(refinement_path.read_bytes()),
+                "snapshotSha256": text_file_sha256(refinement_path),
             },
             "paldb": {
                 "activeSkillOverrides": {
                     "source": active_overrides_source["source"],
                     "fetchedAt": active_overrides_source["fetchedAt"],
                     "sourceSha256": active_overrides_source["sourceSha256"],
-                    "snapshotSha256": sha256(
-                        (VENDOR / "paldb" / "active-skill-overrides.zh-Hans.json").read_bytes()
+                    "snapshotSha256": text_file_sha256(
+                        VENDOR / "paldb" / "active-skill-overrides.zh-Hans.json"
                     ),
                 },
                 "partnerSkills": {
                     "source": partner_source["source"],
                     "fetchedAt": partner_source["fetchedAt"],
                     "sourceSha256": partner_source["sourceSha256"],
-                    "snapshotSha256": sha256(
-                        (VENDOR / "paldb" / "partner-skills.zh-Hans.json").read_bytes()
+                    "snapshotSha256": text_file_sha256(
+                        VENDOR / "paldb" / "partner-skills.zh-Hans.json"
                     ),
                 },
             },
@@ -555,6 +648,17 @@ def main() -> None:
             "placeholderIcons": len(pals) - game_icons,
             "activeSkills": len(skills["activeSkills"]),
             "partnerSkills": len(skills["partnerSkills"]),
+            "passiveSkillSourceRows": len(db["PassiveSkills"]),
+            "passiveSkills": len(skills["passiveSkills"]),
+            "randomlyAvailablePassiveSkills": sum(
+                skill["randomlyAvailable"] for skill in skills["passiveSkills"]
+            ),
+            "guaranteedPassiveSkills": sum(
+                bool(skill["guaranteedBy"]) for skill in skills["passiveSkills"]
+            ),
+            "guaranteedPassiveAssignments": sum(
+                len(skill["guaranteedBy"]) for skill in skills["passiveSkills"]
+            ),
             "movementRecords": len(movement_source["records"]),
             "selectableMovementTypes": sum(EXPECTED_MOVEMENT_TYPES.values()),
             "movementTypes": EXPECTED_MOVEMENT_TYPES,

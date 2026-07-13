@@ -4,6 +4,7 @@ import { pinyin } from "pinyin-pro";
 import { buildBreedingIndex } from "@/core";
 import type {
   ActiveSkillRecord, BreedRule, BreedingIndex, PalId, PalRecord, PartnerSkillRecord,
+  PassiveSkillRecord,
 } from "@/core";
 
 export interface DataManifest {
@@ -11,13 +12,28 @@ export interface DataManifest {
   dataVersion: string;
   generatedAt: string;
   sources: Record<string, Readonly<Record<string, unknown>>>;
-  counts: { pals: number; rules: number; icons: number; activeSkills?: number; partnerSkills?: number };
+  counts: {
+    pals: number;
+    rules: number;
+    icons: number;
+    activeSkills?: number;
+    partnerSkills?: number;
+    passiveSkillSourceRows?: number;
+    passiveSkills?: number;
+    randomlyAvailablePassiveSkills?: number;
+    guaranteedPassiveSkills?: number;
+    guaranteedPassiveAssignments?: number;
+  };
   checksums: { breeding: string; paldex: string; skills?: string };
 }
 
 interface BreedingData { pals: PalRecord[]; rules: BreedRule[] }
 interface PaldexData { pals: PalRecord[] }
-interface SkillsData { activeSkills: ActiveSkillRecord[]; partnerSkills: PartnerSkillRecord[] }
+interface SkillsData {
+  activeSkills: ActiveSkillRecord[];
+  partnerSkills: PartnerSkillRecord[];
+  passiveSkills: PassiveSkillRecord[];
+}
 
 export function formatDex(pal: PalRecord) {
   return `#${String(pal.dexNo).padStart(3, "0")}${pal.variant ? "B" : ""}`;
@@ -92,6 +108,7 @@ export const usePalDataStore = defineStore("palData", () => {
   const rules = shallowRef<BreedRule[]>([]);
   const activeSkills = shallowRef<ActiveSkillRecord[]>([]);
   const partnerSkills = shallowRef<PartnerSkillRecord[]>([]);
+  const passiveSkills = shallowRef<PassiveSkillRecord[]>([]);
   const index = shallowRef<BreedingIndex>();
   const isLoading = ref(false);
   const error = ref("");
@@ -106,6 +123,7 @@ export const usePalDataStore = defineStore("palData", () => {
   const palById = computed(() => new Map<PalId, PalRecord>(pals.value.map((pal) => [pal.id, pal])));
   const activeSkillById = computed(() => new Map(activeSkills.value.map((skill) => [skill.id, skill])));
   const partnerSkillById = computed(() => new Map(partnerSkills.value.map((skill) => [skill.id, skill])));
+  const passiveSkillById = computed(() => new Map(passiveSkills.value.map((skill) => [skill.id, skill])));
   const visiblePals = computed(() => pals.value.filter(isSelectablePal));
 
   async function load() {
@@ -126,6 +144,7 @@ export const usePalDataStore = defineStore("palData", () => {
         rules.value = breeding.rules;
         activeSkills.value = skills.activeSkills;
         partnerSkills.value = skills.partnerSkills;
+        passiveSkills.value = skills.passiveSkills;
         const selectableIds = new Set(paldex.pals.filter(isSelectablePal).map((pal) => pal.id));
         const usableRules = breeding.rules.filter((rule) =>
           selectableIds.has(rule.parentA) && selectableIds.has(rule.parentB) && selectableIds.has(rule.child));
@@ -141,7 +160,7 @@ export const usePalDataStore = defineStore("palData", () => {
   }
 
   return {
-    manifest, pals, rules, activeSkills, partnerSkills, index, selfBreedOnlyIds,
-    palById, activeSkillById, partnerSkillById, visiblePals, isLoading, error, load,
+    manifest, pals, rules, activeSkills, partnerSkills, passiveSkills, index, selfBreedOnlyIds,
+    palById, activeSkillById, partnerSkillById, passiveSkillById, visiblePals, isLoading, error, load,
   };
 });

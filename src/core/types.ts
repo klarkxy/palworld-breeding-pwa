@@ -23,6 +23,18 @@ export interface PartnerSkillRecord {
   description: string;
 }
 
+export interface PassiveSkillRecord {
+  id: string;
+  names: Readonly<{ zh: string; en: string }>;
+  description: Readonly<{ zh: string; en: string }>;
+  rank: number;
+  randomlyAvailable: boolean;
+  randomWeight: number;
+  surgeryCost: number;
+  surgeryItem?: string;
+  guaranteedBy: readonly PalId[];
+}
+
 export interface PartnerSkillRefinementMetric {
   key: string;
   label: string;

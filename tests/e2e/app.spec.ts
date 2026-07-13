@@ -503,9 +503,50 @@ test("图鉴已拥有标记在同源页面间实时同步", async ({ page, conte
   await second.close();
 });
 
+test("词条图鉴收录正式词条并支持检索筛选与固定携带跳转", async ({ page }) => {
+  await openApp(page, "/passives");
+  await expect(page.getByRole("heading", { name: "词条图鉴", level: 1 })).toBeVisible();
+  await expect(page.locator(".passive-card")).toHaveCount(115);
+  await expect(page.locator(".passive-summary")).toContainText(/正式词条\s*115/);
+  await expect(page.locator(".passive-summary")).toContainText(/进入随机词条池\s*85/);
+  await expect(page.locator(".passive-summary")).toContainText(/不进入随机词条池\s*30/);
+  await expect(page.locator(".passive-summary")).toContainText(/可付费手术\s*33/);
+
+  const search = page.getByLabel("搜索词条");
+  await search.fill("zjjy");
+  await expect(page.locator(".passive-card")).toHaveCount(1);
+  await expect(page.locator(".passive-card")).toContainText(/卓绝技艺[\s\S]*工作速度 \+75%[\s\S]*权重 5/);
+  await expect(page.locator(".passive-card__footer")).toContainText("CraftSpeed_up3");
+
+  await search.fill("Legend");
+  const legend = page.locator(".passive-card");
+  await expect(legend).toHaveCount(1);
+  await expect(legend).toContainText(/传说[\s\S]*4 星[\s\S]*攻击\+20%[\s\S]*不进入随机词条池/);
+  await expect(legend.locator(".passive-card__carriers a")).toHaveCount(6);
+  await legend.getByRole("link", { name: "查看唤冬兽的详细图鉴" }).click();
+  await expect(palDrawer(page, "唤冬兽")).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "词条图鉴", level: 1 })).toBeVisible();
+
+  await search.fill("");
+  await selectOption(page, "等级", "5 星");
+  await expect(page.locator(".passive-card")).toHaveCount(7);
+  await selectOption(page, "等级", "全部等级");
+  await selectOption(page, "随机词条池", "不进入随机词条池");
+  await expect(page.locator(".passive-card")).toHaveCount(30);
+  await selectOption(page, "随机词条池", "全部词条");
+  await selectOption(page, "额外获取", "可付费手术");
+  await expect(page.locator(".passive-card")).toHaveCount(33);
+  await selectOption(page, "额外获取", "有对应道具");
+  await expect(page.locator(".passive-card")).toHaveCount(35);
+
+  await page.setViewportSize({ width: 700, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
+});
+
 test("核心页面无严重无障碍问题", async ({ page }) => {
-  test.setTimeout(90_000);
-  for (const route of ["/breeding", "/paths", "/paldex", "/paldex/OniGhostGirl"]) {
+  test.setTimeout(150_000);
+  for (const route of ["/breeding", "/paths", "/paldex", "/paldex/OniGhostGirl", "/passives"]) {
     await openApp(page, route);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     if (route === "/breeding") await page.getByRole("combobox", { name: "亲本 A", exact: true }).focus();
@@ -539,4 +580,9 @@ test("@subpath 安装后断网仍能打开计算器和本地数据", async ({ pa
   const offlineOption = page.locator(".n-base-select-menu:visible .n-base-select-option").filter({ hasText: /吓丝妮.*OniGhostGirl/ });
   await expect(offlineOption).toHaveCount(1);
   await expect(offlineOption.locator("img")).toBeVisible();
+  await page.getByRole("link", { name: "词条", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "词条图鉴" })).toBeVisible();
+  await page.getByLabel("搜索词条").fill("CraftSpeed_up3");
+  await expect(page.locator(".passive-card")).toHaveCount(1);
+  await expect(page.locator(".passive-card")).toContainText("卓绝技艺");
 });
