@@ -507,6 +507,13 @@ test("词条图鉴收录正式词条并支持检索筛选与固定携带跳转",
   await openApp(page, "/passives");
   await expect(page.getByRole("heading", { name: "词条图鉴", level: 1 })).toBeVisible();
   await expect(page.locator(".passive-card")).toHaveCount(115);
+  const passiveListColumns = await page.locator(".passive-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
+  expect(passiveListColumns).toBe(1);
+  if (page.viewportSize()!.width >= 1_088) {
+    await expect(page.locator(".passive-table__head")).toBeVisible();
+    const rowColumns = await page.locator(".passive-card").first().evaluate((row) => getComputedStyle(row).gridTemplateColumns.split(" ").length);
+    expect(rowColumns).toBe(4);
+  }
   await expect(page.locator(".passive-summary")).toContainText(/正式词条\s*115/);
   await expect(page.locator(".passive-summary")).toContainText(/进入随机词条池\s*85/);
   await expect(page.locator(".passive-summary")).toContainText(/不进入随机词条池\s*30/);

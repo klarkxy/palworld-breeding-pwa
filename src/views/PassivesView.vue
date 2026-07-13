@@ -95,7 +95,7 @@ function formatCost(value: number) {
 </script>
 
 <template>
-  <main class="page-shell">
+  <main class="page-shell page-shell--passives">
     <PageIntro
       eyebrow="被动技能"
       title="词条图鉴"
@@ -140,54 +140,57 @@ function formatCost(value: number) {
       </p>
       <p class="result-note" role="status" aria-live="polite">找到 {{ filteredSkills.length }} / {{ passiveSkills.length }} 条正式词条 · 按等级从高到低排列</p>
 
-      <ul class="passive-grid">
-        <li
-          v-for="skill in filteredSkills"
-          :key="skill.id"
-          class="passive-card"
-          :class="{ 'passive-card--negative': skill.rank < 0, 'passive-card--rank-five': skill.rank === 5 }"
-        >
-          <header class="passive-card__header">
-            <div>
-              <h2>{{ skill.names.zh }}</h2>
-              <p>{{ skill.names.en }}</p>
+      <section v-if="filteredSkills.length" class="passive-table" aria-label="词条列表">
+        <div class="passive-table__head" aria-hidden="true">
+          <span>词条</span><span>效果</span><span>随机池与获取</span><span>固定携带</span>
+        </div>
+        <ul class="passive-grid">
+          <li
+            v-for="skill in filteredSkills"
+            :key="skill.id"
+            class="passive-card"
+            :class="{ 'passive-card--negative': skill.rank < 0, 'passive-card--rank-five': skill.rank === 5 }"
+          >
+            <header class="passive-card__header" data-label="词条">
+              <div class="passive-card__title-row">
+                <div><h2>{{ skill.names.zh }}</h2><p>{{ skill.names.en }}</p></div>
+                <span class="passive-rank" :class="{ 'passive-rank--negative': skill.rank < 0 }">{{ rankLabel(skill.rank) }}</span>
+              </div>
+              <div class="passive-card__footer"><span>内部 ID</span><code>{{ skill.id }}</code></div>
+            </header>
+
+            <div class="passive-card__effect-cell" data-label="效果"><p class="passive-card__effect">{{ skill.description.zh }}</p></div>
+
+            <div class="passive-card__facts-cell" data-label="随机池与获取">
+              <div class="passive-card__facts">
+                <span v-if="skill.randomlyAvailable" class="passive-fact passive-fact--random" title="同一随机池中的相对权重">
+                  <span aria-hidden="true">🎲</span>进入随机词条池 · 权重 {{ skill.randomWeight }}
+                </span>
+                <span v-else class="passive-fact passive-fact--fixed"><span aria-hidden="true">🔒</span>不进入随机词条池</span>
+                <span v-if="supportsSurgery(skill)" class="passive-fact passive-fact--surgery" :title="skill.surgeryItem ?? undefined">
+                  <span aria-hidden="true">🧬</span>词条手术 · {{ formatCost(skill.surgeryCost) }} 金币
+                  <template v-if="skill.surgeryItem"> · 需指定道具</template>
+                </span>
+                <span v-else-if="skill.surgeryItem" class="passive-fact passive-fact--item" :title="skill.surgeryItem">
+                  <span aria-hidden="true">🎟️</span>有对应词条道具
+                </span>
+              </div>
             </div>
-            <span class="passive-rank" :class="{ 'passive-rank--negative': skill.rank < 0 }">{{ rankLabel(skill.rank) }}</span>
-          </header>
 
-          <p class="passive-card__effect">{{ skill.description.zh }}</p>
-
-          <div class="passive-card__facts">
-            <span v-if="skill.randomlyAvailable" class="passive-fact passive-fact--random" title="同一随机池中的相对权重">
-              <span aria-hidden="true">🎲</span>进入随机词条池 · 权重 {{ skill.randomWeight }}
-            </span>
-            <span v-else class="passive-fact passive-fact--fixed"><span aria-hidden="true">🔒</span>不进入随机词条池</span>
-            <span v-if="supportsSurgery(skill)" class="passive-fact passive-fact--surgery" :title="skill.surgeryItem ?? undefined">
-              <span aria-hidden="true">🧬</span>词条手术 · {{ formatCost(skill.surgeryCost) }} 金币
-              <template v-if="skill.surgeryItem"> · 需指定道具</template>
-            </span>
-            <span v-else-if="skill.surgeryItem" class="passive-fact passive-fact--item" :title="skill.surgeryItem">
-              <span aria-hidden="true">🎟️</span>有对应词条道具
-            </span>
-          </div>
-
-          <section v-if="guaranteedPals(skill).length" class="passive-card__carriers" :aria-label="`${skill.names.zh}的固定携带帕鲁`">
-            <h3>固定携带</h3>
-            <ul>
-              <li v-for="pal in guaranteedPals(skill)" :key="pal.id">
-                <RouterLink :to="`/paldex/${encodeURIComponent(pal.id)}`" :aria-label="`查看${pal.names.zh}的详细图鉴`">
-                  <PalIcon :pal size="small" />
-                  <span><strong>{{ pal.names.zh }}</strong><small>{{ formatDex(pal) }}</small></span>
-                </RouterLink>
-              </li>
-            </ul>
-          </section>
-
-          <footer class="passive-card__footer">
-            <span>内部 ID</span><code>{{ skill.id }}</code>
-          </footer>
-        </li>
-      </ul>
+            <section class="passive-card__carriers" data-label="固定携带" :aria-label="`${skill.names.zh}的固定携带帕鲁`">
+              <ul v-if="guaranteedPals(skill).length">
+                <li v-for="pal in guaranteedPals(skill)" :key="pal.id">
+                  <RouterLink :to="`/paldex/${encodeURIComponent(pal.id)}`" :aria-label="`查看${pal.names.zh}的详细图鉴`">
+                    <PalIcon :pal size="small" />
+                    <span><strong>{{ pal.names.zh }}</strong><small>{{ formatDex(pal) }}</small></span>
+                  </RouterLink>
+                </li>
+              </ul>
+              <span v-else class="passive-card__empty">—</span>
+            </section>
+          </li>
+        </ul>
+      </section>
       <NEmpty v-if="!filteredSkills.length" class="empty-state" description="没有匹配的词条。" />
     </DataState>
   </main>
