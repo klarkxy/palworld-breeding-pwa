@@ -6,18 +6,18 @@
 
 ## 功能
 
-- `A + B = ?`、`A + ? = B`、目标全部父母组合
+- `A + B = ?` 与目标全部父母组合
 - 单起点最短繁育链
-- 基于“我的帕鲁”物种集合的最短多根繁育树
-- 简中/拼音首字母/英文/图鉴编号搜索与实用图鉴
+- 基于图鉴“已拥有”标记的最短多根繁育树
+- 简中/拼音首字母/英文/图鉴编号搜索，以及可排序、可标记已拥有的实用图鉴
 - 图鉴移动参数展示，以及按编号、基础数值、工作等级或指定移动参数排序
-- 主动技能属性、威力、冷却、学习等级与说明，以及伙伴技能简中说明
-- 每只帕鲁的 0 星 / 4 星精炼对照：战斗倍率、工作等级、伙伴技能数值、牧场产出与滑翔参数
+- 主动技能属性、威力、冷却、学习等级与说明，以及伙伴技能的当前星级结构化参数
+- 每只帕鲁的 0 星 / 4 星精炼切换：战斗倍率、工作等级、伙伴技能数值、牧场产出与滑翔参数
 - PWA 离线使用、移动端布局、GitHub Pages 部署
 
 ## 本地数据
 
-“我的帕鲁”、配种与路线输入、图鉴筛选/排序和 0/4 星偏好都由 Pinia 管理，并按功能保存在当前浏览器的版本化 `localStorage` 中。切换站内页面、刷新、关闭后重开或新开同源窗口都不会丢失；同源窗口会实时同步并以最后一次修改为准。旧版雄/雌记录会自动合并为单条物种记录，数据版本升级时只会清理已经失效的内部 ID。
+图鉴中的“已拥有”标记、配种与路线输入、图鉴筛选/排序和 0/4 星偏好都由 Pinia 管理，并按功能保存在当前浏览器的版本化 `localStorage` 中。切换站内页面、刷新、关闭后重开或新开同源窗口都不会丢失；同源窗口会实时同步并以最后一次修改为准。旧版雄/雌记录会自动合并为单条物种记录，数据版本升级时只会清理已经失效的内部 ID。
 
 路线方案树不会写入本地存储；页面恢复后会使用当前 1.0 配种规则与最新库存重新计算，避免数据升级后继续展示旧结果。如果浏览器拒绝本地存储访问，应用仍可在当前页面使用，并会明确提示本次更改无法保存。
 
@@ -44,7 +44,7 @@
 | 帕鲁头像 | [PalCalc `PalCalc.UI/Resources/Pals`](https://github.com/tylercamp/palcalc/tree/b5e13e90fedc2e95d54fa223da77be464c313001/PalCalc.UI/Resources/Pals)，同一固定版本 | 303 张 100×100 PNG 按内部 ID 重命名；缺图的 3 条隐藏内部记录（`BlackFurDragon`、`POLICE_HawkBird`、`POLICE_ThunderDog`）由本项目生成 SVG 占位图，不会出现在图鉴选择器中。 |
 | 拼音首字母 | 帕鲁简中名称 + [`pinyin-pro` 3.28.1](https://www.npmjs.com/package/pinyin-pro/v/3.28.1) | 仅在浏览器中生成搜索索引，不修改静态帕鲁数据。 |
 
-四个发布数据文件均由 [`scripts/generate_data.py`](./scripts/generate_data.py) 从上述固定快照生成：[`breeding.json`](./public/data/breeding.json) 保存帕鲁记录和全部规则，[`paldex.json`](./public/data/paldex.json) 保存同一份帕鲁记录，[`skills.json`](./public/data/skills.json) 保存主动与伙伴技能事实，[`manifest.json`](./public/data/manifest.json) 保存来源、数量与校验值。属性/工作类别的简中标签、`selectable` 标记、规则性别展开和 3 张占位图属于本项目的确定性派生结果；“我的帕鲁”则完全来自用户在当前浏览器中的本地输入。
+四个发布数据文件均由 [`scripts/generate_data.py`](./scripts/generate_data.py) 从上述固定快照生成：[`breeding.json`](./public/data/breeding.json) 保存帕鲁记录和全部规则，[`paldex.json`](./public/data/paldex.json) 保存同一份帕鲁记录，[`skills.json`](./public/data/skills.json) 保存主动与伙伴技能事实，[`manifest.json`](./public/data/manifest.json) 保存来源、数量与校验值。属性/工作类别的简中标签、`selectable` 标记、规则性别展开和 3 张占位图属于本项目的确定性派生结果；图鉴中的“已拥有”标记则完全来自用户在当前浏览器中的本地输入。
 
 移动速度字段是游戏配置参数，不等同于实测移动速度；负数是“不可用”哨兵，不是有效速度。内部移动类型描述角色移动组件，不代表该帕鲁可以乘骑。仅 6 条记录存在有效 Blueprint 飞行速度覆盖值；该覆盖值与基础速度分开保留，也不能当作所有飞行帕鲁统一的最终飞行速度。
 
@@ -59,16 +59,16 @@
 前端采用 Vue 3、Pinia、Naive UI 与 Vite。Naive UI 组件按需导入，视觉仍使用本站的蛋壳卡片、天空蓝和珊瑚色主题；静态图鉴与配种数据由 PWA 缓存，用户输入由 `localStorage` 保存。
 
 ```powershell
-npm install
-npm run check
-npm run dev
+pnpm install
+pnpm run check
+pnpm run dev
 ```
 
 生产预览：
 
 ```powershell
-npm run build
-npm run preview
+pnpm run build
+pnpm run preview
 ```
 
 重新生成并验证已固定版本的数据：
@@ -78,7 +78,7 @@ node scripts/fetch-palcalc-icons.mjs
 node scripts/fetch-paldb-partner-skills.mjs
 node scripts/import-refinement-snapshot.mjs <path-to-local-unpack-directory>
 python scripts/generate_data.py
-npm run validate:data
+pnpm run validate:data
 ```
 
 应用图标由仓库内的 SVG 机械渲染为浏览器兼容的 PNG：`node scripts/render-app-icons.mjs`。

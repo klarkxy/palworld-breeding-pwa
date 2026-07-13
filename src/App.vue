@@ -24,7 +24,6 @@ const noticesUrl = `${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`;
 const navigation = [
   { to: "/breeding", label: "配种", icon: "⊕" },
   { to: "/paths", label: "路线", icon: "⌁" },
-  { to: "/collection", label: "我的", icon: "◇" },
   { to: "/paldex", label: "图鉴", icon: "▦" },
 ];
 const themeOverrides: GlobalThemeOverrides = {

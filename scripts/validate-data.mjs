@@ -5,7 +5,11 @@ import { basename, resolve } from "node:path";
 const root = resolve(import.meta.dirname, "..");
 const dataDir = resolve(root, "public/data");
 const readJson = async (name) => JSON.parse(await readFile(resolve(dataDir, name), "utf8"));
-const digest = async (name) => createHash("sha256").update(await readFile(resolve(dataDir, name))).digest("hex");
+const normalizeText = (contents) => contents.toString("utf8").replace(/\r\n/g, "\n");
+const digestText = (contents) => createHash("sha256")
+  .update(normalizeText(contents))
+  .digest("hex");
+const digest = async (name) => digestText(await readFile(resolve(dataDir, name)));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 
 const [manifest, breeding, paldex, skills] = await Promise.all([
@@ -71,9 +75,10 @@ for (const pal of palsById) {
   await access(iconPath);
   iconHash.update(basename(iconPath));
   iconHash.update("\0");
-  iconHash.update(await readFile(iconPath));
+  const iconBytes = await readFile(iconPath);
+  iconHash.update(pal.icon.endsWith(".svg") ? normalizeText(iconBytes) : iconBytes);
   if (pal.icon.endsWith(".png")) {
-    const icon = await readFile(iconPath);
+    const icon = iconBytes;
     assert(icon.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), `Invalid PNG: ${pal.id}`);
     assert(icon.readUInt32BE(16) === 100 && icon.readUInt32BE(20) === 100, `Expected 100x100 icon: ${pal.id}`);
   } else {
@@ -169,7 +174,7 @@ assert(manifest.dataVersion.endsWith("-skills1-movement1-refinement1"), `Unexpec
 for (const [name, file] of [["activeSkillOverrides", "active-skill-overrides.zh-Hans.json"], ["partnerSkills", "partner-skills.zh-Hans.json"]]) {
   const path = resolve(root, "scripts/vendor/paldb", file);
   const snapshot = JSON.parse(await readFile(path, "utf8"));
-  const snapshotHash = createHash("sha256").update(await readFile(path)).digest("hex");
+  const snapshotHash = digestText(await readFile(path));
   assert(manifest.sources.paldb[name].sourceSha256 === snapshot.sourceSha256, `PalDB ${name} source hash mismatch`);
   assert(manifest.sources.paldb[name].snapshotSha256 === snapshotHash, `PalDB ${name} snapshot hash mismatch`);
 }
@@ -201,7 +206,7 @@ assert(pals.filter((pal) => pal.movement.rideSprintSpeed < 0).length === 3, "Rid
 assert(pals.filter((pal) => pal.movement.transportSpeed < 0).length === 21, "Transport sentinel count changed");
 assert(palsById.find((pal) => pal.id === "MimicDog").movement.swimDashSpeed === 0, "MimicDog swim sentinel changed");
 assert(manifest.sources.localGameMovement.snapshotSha256
-  === createHash("sha256").update(movementSnapshotBytes).digest("hex"), "Movement snapshot hash mismatch");
+  === digestText(movementSnapshotBytes), "Movement snapshot hash mismatch");
 assert(manifest.sources.localGameMovement.rawArtifactSha256
   === "528b804632f0030186804cd9b1b3a3a89b75f046baa0c77e713d2e3e76009d16", "Raw unpack hash mismatch");
 const refinementPath = resolve(root, "scripts/vendor/palworld/refinement-v1.json");
@@ -235,7 +240,7 @@ assert(pals.find((pal) => pal.id === "Eagle").refinement.zeroStar.metrics
     .find((metric) => metric.key === "gliderMaxSpeed").value === 1700,
 "Eagle glider refinement changed");
 assert(manifest.sources.localGameRefinement.snapshotSha256
-  === createHash("sha256").update(refinementSnapshotBytes).digest("hex"), "Refinement snapshot hash mismatch");
+  === digestText(refinementSnapshotBytes), "Refinement snapshot hash mismatch");
 assert(manifest.sources.localGameRefinement.rawArtifactSha256.special
   === "ca856bba482d8c2988d17dccde30880f49d0e4336e0260f68cd3e908febd3ae5",
 "Special refinement source hash mismatch");

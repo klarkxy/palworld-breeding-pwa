@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, nextTick, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { NEmpty, NInput, NSelect } from "naive-ui";
 import type { SelectOption } from "naive-ui";
@@ -7,8 +7,9 @@ import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalIcon from "@/components/PalIcon.vue";
-import { elementName, formatDex, palMatchesSearch, workName } from "@/composables/usePalData";
+import { elementName, formatDex, palMatchesSearch, workIcon, workName } from "@/composables/usePalData";
 import type { PalRecord } from "@/core";
+import { useCollectionStore } from "@/stores/collection";
 import { usePalDataStore } from "@/stores/palData";
 import { usePaldexStore } from "@/stores/paldex";
 import type { PaldexSortKey as SortKey } from "@/stores/paldex";
@@ -16,14 +17,25 @@ import type { PaldexSortKey as SortKey } from "@/stores/paldex";
 const router = useRouter();
 const route = useRoute();
 const palData = usePalDataStore();
+const collection = useCollectionStore();
 const paldex = usePaldexStore();
 const { visiblePals, partnerSkillById, selfBreedOnlyIds, isLoading, error } = storeToRefs(palData);
+const { entries, cleanedCount, view: ownership } = storeToRefs(collection);
 const { query, element, work, variant, sortKey } = storeToRefs(paldex);
 const { load } = palData;
+const { setOwned } = collection;
+const ownedIds = computed(() => new Set(entries.value.map((entry) => entry.palId)));
 
 watch([() => route.query, () => visiblePals.value.length], ([routeQuery, palCount]) => {
-  if (palCount) paldex.applyRoute(routeQuery);
+  if (!palCount) return;
+  paldex.applyRoute(routeQuery);
+  collection.applyRoute(routeQuery);
 }, { immediate: true });
+watch([ownership, () => route.path, () => route.query.view, () => visiblePals.value.length], ([value, , , palCount]) => {
+  if (!palCount) return;
+  const routeView = Array.isArray(route.query.view) ? route.query.view[0] : route.query.view;
+  if (routeView !== value) void router.replace({ query: { ...route.query, view: value } });
+}, { flush: "post", immediate: true });
 interface SortOption extends SelectOption {
   value: SortKey;
   label: string;
@@ -86,7 +98,12 @@ const variantOptions = [
   { label: "仅本体", value: "base" },
   { label: "仅亚种", value: "variant" },
 ];
+const ownershipOptions = [
+  { label: "全部帕鲁", value: "all" },
+  { label: "仅已拥有", value: "owned" },
+];
 const filteredPals = computed(() => visiblePals.value.filter((pal) => {
+  if (ownership.value === "owned" && !ownedIds.value.has(pal.id)) return false;
   if (element.value && !pal.elements.includes(element.value)) return false;
   if (work.value && !(work.value in pal.workSuitability)) return false;
   if (variant.value === "base" && pal.variant) return false;
@@ -109,32 +126,50 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
   return a.dexNo - b.dexNo || Number(a.variant) - Number(b.variant) || a.id.localeCompare(b.id, "en");
 }));
 
-function closeDetail() {
+async function focusPaldexCard(palId = "") {
+  await nextTick();
+  const card = palId
+    ? document.querySelector<HTMLElement>(`.paldex-card[data-pal-id="${CSS.escape(palId)}"]`)
+    : undefined;
+  (card ?? document.querySelector<HTMLElement>('[aria-label="搜索图鉴"]'))?.focus();
+}
+
+async function toggleOwned(palId: string, wasOwned: boolean) {
+  const visibleIds = filteredPals.value.map((pal) => pal.id);
+  const index = visibleIds.indexOf(palId);
+  const adjacentId = visibleIds[index + 1] ?? visibleIds[index - 1] ?? "";
+  setOwned(palId, !wasOwned);
+  if (wasOwned && ownership.value === "owned") await focusPaldexCard(adjacentId);
+}
+
+async function closeDetail() {
   const palId = String(router.currentRoute.value.params.id ?? "");
-  document.querySelector<HTMLElement>(`.paldex-card[data-pal-id="${CSS.escape(palId)}"]`)?.focus();
-  void router.replace("/paldex");
+  await router.replace({ path: "/paldex", query: { ...route.query, view: ownership.value } });
+  await focusPaldexCard(palId);
 }
 </script>
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="图鉴" title="帕鲁图鉴" description="按名称、编号、属性或工作适应性筛选帕鲁。" />
+    <PageIntro eyebrow="图鉴" title="帕鲁图鉴" description="筛选、排序，并直接标记已经拥有的帕鲁。" />
     <DataState :is-loading :error @retry="load">
+      <p v-if="cleanedCount" class="notice">数据已升级，自动移除了 {{ cleanedCount }} 条失效记录。</p>
       <section class="filter-bar filter-bar--paldex" aria-label="筛选图鉴">
         <label class="field filter-search"><span class="field__label">搜索图鉴</span><NInput v-model:value="query" class="field-control" clearable size="large" placeholder="中文 / 拼音首字母 / English / 编号 / ID" :input-props="{ type: 'search', 'aria-label': '搜索图鉴' }" /></label>
         <label class="field field--compact"><span class="field__label">属性</span><NSelect v-model:value="element" class="field-control" :options="elementSelectOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '属性' }" /></label>
         <label class="field field--compact"><span class="field__label">工作</span><NSelect v-model:value="work" class="field-control" :options="workSelectOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '工作' }" /></label>
         <label class="field field--compact"><span class="field__label">种类</span><NSelect v-model:value="variant" class="field-control" :options="variantOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '种类' }" /></label>
         <label class="field field--compact"><span class="field__label">排序</span><NSelect v-model:value="sortKey" class="field-control" :options="sortOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '排序' }" /></label>
+        <label class="field field--compact"><span class="field__label">拥有状态</span><NSelect v-model:value="ownership" class="field-control" :options="ownershipOptions" :fallback-option="false" size="large" :input-props="{ 'aria-label': '拥有状态' }" /></label>
       </section>
-      <p class="result-note">找到 {{ filteredPals.length }} 种帕鲁 · {{ work ? `${workName(work)}等级优先 · ` : "" }}{{ selectedSort.label }}</p>
+      <p class="result-note">找到 {{ filteredPals.length }} 种{{ ownership === "owned" ? "已拥有" : "" }}帕鲁 · 已拥有 {{ entries.length }} 种 · {{ work ? `${workName(work)}等级优先 · ` : "" }}{{ selectedSort.label }}</p>
       <ul class="paldex-grid">
-        <li v-for="pal in filteredPals" :key="pal.id">
+        <li v-for="pal in filteredPals" :key="pal.id" class="paldex-item" :class="{ 'paldex-item--owned': ownedIds.has(pal.id) }">
           <RouterLink
-            :to="`/paldex/${encodeURIComponent(pal.id)}`"
+            :to="{ path: `/paldex/${encodeURIComponent(pal.id)}`, query: { ...route.query, view: ownership } }"
             class="paldex-card"
             :data-pal-id="pal.id"
-            :aria-label="`${pal.names.zh} ${formatDex(pal)}${selfBreedOnlyIds.has(pal.id) ? '，仅可同种自交' : ''}${mountTechnologyLabel(pal) ? `，${mountMovementTypeLabel(pal)}，${mountTechnologyLabel(pal)}` : ''}，打开详细图鉴`"
+            :aria-label="`${pal.names.zh} ${formatDex(pal)}${ownedIds.has(pal.id) ? '，已拥有' : ''}${selfBreedOnlyIds.has(pal.id) ? '，仅可同种自交' : ''}${mountTechnologyLabel(pal) ? `，${mountMovementTypeLabel(pal)}，${mountTechnologyLabel(pal)}` : ''}，打开详细图鉴`"
             :aria-describedby="`paldex-preview-${pal.id}`"
           >
             <div class="paldex-card__art"><PalIcon :pal size="large" /></div>
@@ -147,7 +182,7 @@ function closeDetail() {
               <div v-if="sortKey !== 'dex'" class="paldex-card__sort-value"><span>{{ selectedSort.label.replace(/（.*$/, "") }}</span><strong>{{ formatSortValue(pal) }}</strong></div>
               <div class="paldex-card__work">
                 <span class="paldex-card__work-label">工作适应性</span>
-                <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-card__work-list"><li v-for="(level, item) in pal.workSuitability" :key="item"><span>{{ workName(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>
+                <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-card__work-list"><li v-for="(level, item) in pal.workSuitability" :key="item" :aria-label="`${workName(item)} Lv.${level}`" :title="`${workName(item)} Lv.${level}`"><span class="work-icon" aria-hidden="true">{{ workIcon(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>
                 <span v-else class="paldex-card__work-empty">无据点工作</span>
               </div>
             </div>
@@ -156,10 +191,18 @@ function closeDetail() {
               <span class="paldex-preview__label">基础数值</span>
               <dl class="paldex-preview__stats"><div v-for="([key, label]) in quickStats" :key="key"><dt>{{ label }}</dt><dd>{{ quickStatValue(pal, key) }}</dd></div></dl>
               <span class="paldex-preview__label">工作等级</span>
-              <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-preview__work"><li v-for="(level, item) in pal.workSuitability" :key="item"><span>{{ workName(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>
+              <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-preview__work"><li v-for="(level, item) in pal.workSuitability" :key="item" :aria-label="`${workName(item)} Lv.${level}`" :title="`${workName(item)} Lv.${level}`"><span class="work-icon" aria-hidden="true">{{ workIcon(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>
               <span v-else class="paldex-preview__empty">无据点工作</span>
             </div>
           </RouterLink>
+          <button
+            type="button"
+            class="ownership-badge"
+            :class="{ 'ownership-badge--owned': ownedIds.has(pal.id) }"
+            :aria-label="ownedIds.has(pal.id) ? `取消标记${pal.names.zh}为已拥有` : `标记${pal.names.zh}为已拥有`"
+            :title="ownedIds.has(pal.id) ? '取消已拥有标记' : '标记为已拥有'"
+            @click="toggleOwned(pal.id, ownedIds.has(pal.id))"
+          ><span aria-hidden="true">{{ ownedIds.has(pal.id) ? "✓" : "+" }}</span>{{ ownedIds.has(pal.id) ? "已拥有" : "标记拥有" }}</button>
         </li>
       </ul>
       <NEmpty v-if="!filteredPals.length" class="empty-state" description="没有匹配项。" />

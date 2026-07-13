@@ -4,7 +4,7 @@ import type { PalId } from "@/core";
 import { bindLocalStorage } from "@/stores/persistence";
 
 export const BREEDING_STORAGE_KEY = "pal-lab.breeding.v1";
-export type BreedingMode = "forward" | "mate" | "pairs";
+export type BreedingMode = "forward" | "pairs";
 
 interface BreedingSnapshot {
   schema: 1;
@@ -18,8 +18,10 @@ interface BreedingSnapshot {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
 const palId = (value: unknown): PalId | "" => typeof value === "string" ? value.slice(0, 128) : "";
+// The old mate finder is now covered by route planning. Keep old snapshots useful by
+// opening the broader parent-pair lookup instead of leaving them on a removed tab.
 const breedingMode = (value: unknown): BreedingMode =>
-  value === "mate" || value === "pairs" ? value : "forward";
+  value === "mate" || value === "pairs" ? "pairs" : "forward";
 const queryValue = (value: unknown) => Array.isArray(value) ? value[0] : value;
 
 export function decodeBreedingSnapshot(value: unknown): BreedingSnapshot | undefined {
@@ -91,7 +93,8 @@ export const useBreedingStore = defineStore("breeding", () => {
   function applyRoute(query: Readonly<Record<string, unknown>>) {
     if (!["mode", "a", "b", "target", "owned"].some((key) => key in query)) return false;
     const routeMode = queryValue(query.mode);
-    if (routeMode === "forward" || routeMode === "mate" || routeMode === "pairs") mode.value = routeMode;
+    if (routeMode === "forward") mode.value = "forward";
+    if (routeMode === "mate" || routeMode === "pairs") mode.value = "pairs";
     const applyPal = (value: unknown, assign: (id: PalId | "") => void) => {
       const id = palId(queryValue(value));
       if (id && validIds?.has(id)) assign(id);

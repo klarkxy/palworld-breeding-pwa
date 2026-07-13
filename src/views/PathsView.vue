@@ -29,7 +29,7 @@ const modes = [
 const depthOptions = Array.from({ length: 8 }, (_, index) => ({ label: `${index + 1} 代`, value: index + 1 }));
 const hasSearched = computed(() => Boolean(lastRun.value));
 const emptyDescription = computed(() => lastRun.value?.mode === "owned" && !entries.value.length
-  ? '先到"我的帕鲁"记录至少一种帕鲁。'
+  ? "先在图鉴中标记至少一种已拥有的帕鲁。"
   : "代数范围内没有路线，试试增加上限。");
 
 watch([() => route.query, () => visiblePals.value.length], ([query, palCount]) => {
@@ -62,7 +62,7 @@ const plans = computed<BreedPlan[]>(() => {
           </div>
           <div v-else class="inventory-summary">
             <strong>{{ entries.length }}</strong><span>种已记录帕鲁</span>
-            <RouterLink to="/collection">整理库存 →</RouterLink>
+            <RouterLink :to="{ path: '/paldex', query: { view: 'all' } }">管理拥有标记 →</RouterLink>
           </div>
           <span class="route-arrow" aria-hidden="true">⟶</span>
           <PalSelect v-model="target" :pals="visiblePals" label="目标帕鲁" />

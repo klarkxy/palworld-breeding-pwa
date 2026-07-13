@@ -46,7 +46,12 @@ const elementNames: Record<string, string> = {
 const workNames: Record<string, string> = {
   kindling: "生火", watering: "浇水", planting: "播种", generatingelectricity: "发电", generateelectricity: "发电",
   handiwork: "手工作业", gathering: "采集", lumbering: "伐木", mining: "采矿",
-  medicineproduction: "制药", cooling: "冷却", transporting: "搬运", farming: "牧场",
+  medicineproduction: "制药", cooling: "冷却", transporting: "搬运", farming: "牧场", oilextraction: "采油",
+};
+const workIcons: Record<string, string> = {
+  kindling: "🔥", watering: "💧", planting: "🌱", generatingelectricity: "⚡", generateelectricity: "⚡",
+  handiwork: "🛠️", gathering: "🌾", lumbering: "🪓", mining: "⛏️",
+  medicineproduction: "💊", cooling: "❄️", transporting: "📦", farming: "🐄", oilextraction: "🛢️",
 };
 const keyOf = (value: string) => value.toLocaleLowerCase().replace(/[^a-z]/g, "");
 
@@ -56,6 +61,10 @@ export function elementName(value: string) {
 
 export function workName(value: string) {
   return workNames[keyOf(value)] ?? value;
+}
+
+export function workIcon(value: string) {
+  return workIcons[keyOf(value)] ?? "•";
 }
 
 export function isSelectablePal(pal: PalRecord) {

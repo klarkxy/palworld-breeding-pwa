@@ -3,7 +3,7 @@ import { storeToRefs } from "pinia";
 import { NButton, NCheckbox, NEmpty, NTabPane, NTabs } from "naive-ui";
 import { computed, watch } from "vue";
 import { useRoute } from "vue-router";
-import { findMates, getChildren, getParentPairs } from "@/core";
+import { getChildren, getParentPairs } from "@/core";
 import type { PalId } from "@/core";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
@@ -24,7 +24,6 @@ const { mode, parentA, parentB, target, ownedOnly } = storeToRefs(breeding);
 const { load } = palData;
 const modes = [
   { id: "forward", label: "A ＋ B ＝ ?", help: "两个亲本会孵出谁" },
-  { id: "mate", label: "A ＋ ? ＝ B", help: "为亲本寻找配偶" },
   { id: "pairs", label: "? ＋ ? ＝ B", help: "查看目标的全部父母组合" },
 ] as const;
 
@@ -55,11 +54,6 @@ const results = computed(() => {
       a: match.parentA, b: match.parentB, child: match.child,
     })));
   }
-  if (mode.value === "mate" && parentA.value && target.value) {
-    return uniqueRecipes(findMates(index.value, parentA.value, target.value).map((match) => ({
-      a: match.parent, b: match.mate, child: match.child,
-    })));
-  }
   if (mode.value === "pairs" && target.value) {
     return uniqueRecipes(getParentPairs(index.value, target.value, ownedOnly.value ? entries.value : undefined)
       .map((match) => ({ a: match.parentA, b: match.parentB, child: match.child })));
@@ -69,9 +63,7 @@ const results = computed(() => {
 
 const isReady = computed(() => mode.value === "forward"
   ? Boolean(parentA.value && parentB.value)
-  : mode.value === "mate"
-    ? Boolean(parentA.value && target.value)
-    : Boolean(target.value));
+  : Boolean(target.value));
 
 function swapParents() {
   [parentA.value, parentB.value] = [parentB.value, parentA.value];
@@ -80,7 +72,7 @@ function swapParents() {
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="育种台" title="配种计算" description="正向算子代、反查配偶，或一次查看目标帕鲁的全部父母组合。" />
+    <PageIntro eyebrow="育种台" title="配种计算" description="正向计算子代，或一次查看目标帕鲁的全部父母组合。" />
     <DataState :is-loading :error @retry="load">
       <NTabs v-model:value="mode" class="segmented-control" type="segment" aria-label="选择计算方式" :pane-wrapper-style="{ display: 'none' }" :tab-style="{ flex: '1 1 0', justifyContent: 'center', minWidth: 0 }">
         <NTabPane v-for="item in modes" :key="item.id" :name="item.id">
@@ -95,7 +87,6 @@ function swapParents() {
           </div>
 
           <NButton v-if="mode === 'forward'" class="swap-button" circle aria-label="交换两个亲本" @click="swapParents">⇄</NButton>
-          <span v-else-if="mode === 'mate'" class="equation-mark" aria-hidden="true">＋ ? ＝</span>
           <span v-else class="equation-mark" aria-hidden="true">? ＋ ? ＝</span>
 
           <div v-if="mode === 'forward'" class="parent-field">

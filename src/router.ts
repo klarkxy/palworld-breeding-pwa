@@ -9,7 +9,13 @@ export const router = createRouter({
     { path: "/", redirect: "/breeding" },
     { path: "/breeding", name: "breeding", component: () => import("@/views/BreedingView.vue"), meta: { title: "配种计算" } },
     { path: "/paths", name: "paths", component: () => import("@/views/PathsView.vue"), meta: { title: "繁育路线" } },
-    { path: "/collection", name: "collection", component: () => import("@/views/CollectionView.vue"), meta: { title: "我的帕鲁" } },
+    {
+      path: "/collection",
+      redirect: (to) => ({
+        path: "/paldex",
+        query: { ...to.query, view: to.query.view === "owned" ? "owned" : "all" },
+      }),
+    },
     {
       path: "/paldex",
       name: "paldex",

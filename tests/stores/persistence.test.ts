@@ -104,7 +104,7 @@ describe("Pinia local persistence", () => {
     read.mockRestore();
   });
 
-  it("applies a cross-tab snapshot without writing it back", () => {
+  it("migrates a removed mate-mode snapshot without writing it back", () => {
     const store = useBreedingStore();
     store.sanitize(new Set(["A", "B"]));
     const write = vi.spyOn(Storage.prototype, "setItem");
@@ -121,7 +121,7 @@ describe("Pinia local persistence", () => {
       }),
     }));
 
-    expect(store.mode).toBe("mate");
+    expect(store.mode).toBe("pairs");
     expect(store.parentA).toBe("A");
     expect(store.target).toBe("B");
     expect(write).not.toHaveBeenCalled();
@@ -216,6 +216,8 @@ describe("Pinia local persistence", () => {
     store.parentB = "saved-b";
     store.target = "saved-target";
 
+    store.applyRoute({ mode: "mate" });
+    expect(store.mode).toBe("pairs");
     store.applyRoute({ mode: "pairs", target: "route-target" });
 
     expect(store.mode).toBe("pairs");
