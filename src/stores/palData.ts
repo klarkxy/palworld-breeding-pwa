@@ -44,7 +44,7 @@ const elementNames: Record<string, string> = {
   fire: "火", grass: "草", leaf: "草", ice: "冰", neutral: "无", normal: "无", water: "水",
 };
 const elementIcons: Record<string, string> = {
-  dark: "🌙", dragon: "🐉", earth: "🪨", electricity: "⚡", electric: "⚡",
+  dark: "🌙", dragon: "🐉", earth: "⛰️", electricity: "⚡", electric: "⚡",
   fire: "🔥", grass: "🌿", leaf: "🌿", ice: "❄️", neutral: "⚪", normal: "⚪", water: "💧",
 };
 const workNames: Record<string, string> = {

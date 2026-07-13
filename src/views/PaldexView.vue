@@ -44,6 +44,25 @@ interface SortOption extends SelectOption {
 }
 const isFlight = (pal: PalRecord) => pal.movement.type === "fly" || pal.movement.type === "flyAndLanding";
 const usable = (value: number | undefined) => value !== undefined && value >= 0 ? value : undefined;
+type SprintMode = "ground" | "fly" | "swim";
+function sprintMode(pal: PalRecord): SprintMode {
+  if (movement.value === "ground") return "ground";
+  if (movement.value === "fly" || movement.value === "flyAndLanding") return "fly";
+  if (movement.value === "swim") return "swim";
+  if (pal.movement.type === "swim") return "swim";
+  return isFlight(pal) ? "fly" : "ground";
+}
+function sprintMetric(pal: PalRecord) {
+  const mode = sprintMode(pal);
+  if (mode === "swim")
+    return { label: "游泳冲刺参数", value: usable(pal.movement.swimDashSpeed) };
+  if (mode === "fly")
+    return {
+      label: "飞行冲刺参数",
+      value: usable(pal.movement.flySprintSpeedOverride) ?? usable(pal.movement.rideSprintSpeed),
+    };
+  return { label: "陆地冲刺参数", value: usable(pal.movement.rideSprintSpeed) };
+}
 const defaultSort: SortOption = { value: "dex", label: "图鉴编号" };
 const sortOptions: SortOption[] = [
   defaultSort,
@@ -56,7 +75,7 @@ const sortOptions: SortOption[] = [
   { value: "slowWalkSpeed", label: "慢走参数", get: (pal) => usable(pal.movement.slowWalkSpeed) },
   { value: "walkSpeed", label: "行走参数", get: (pal) => usable(pal.movement.walkSpeed) },
   { value: "runSpeed", label: "奔跑参数", get: (pal) => usable(pal.movement.runSpeed) },
-  { value: "rideSprintSpeed", label: "乘骑冲刺参数", get: (pal) => usable(pal.movement.rideSprintSpeed) },
+  { value: "rideSprintSpeed", label: "按种类冲刺参数", get: (pal) => sprintMetric(pal).value },
   { value: "transportSpeed", label: "搬运参数", get: (pal) => usable(pal.movement.transportSpeed) },
   { value: "swimSpeed", label: "游泳参数", get: (pal) => usable(pal.movement.swimSpeed) },
   { value: "swimDashSpeed", label: "游泳冲刺参数", get: (pal) => usable(pal.movement.swimDashSpeed) },
@@ -74,6 +93,15 @@ const formatSortValue = (pal: PalRecord) => {
   if (value === undefined) return "—";
   return selectedSort.value.value === "maleProbability" ? `${value}%` : String(value);
 };
+const sortLabelForPal = (pal: PalRecord) =>
+  sortKey.value === "rideSprintSpeed" ? sprintMetric(pal).label : selectedSort.value.label;
+const resultSortLabel = computed(() => {
+  if (sortKey.value !== "rideSprintSpeed") return selectedSort.value.label;
+  if (movement.value === "ground") return "陆地冲刺参数";
+  if (movement.value === "swim") return "游泳冲刺参数";
+  if (movement.value === "fly" || movement.value === "flyAndLanding") return "飞行冲刺参数";
+  return "按种类冲刺参数";
+});
 function mountTechnologyLabel(pal: PalRecord) {
   const description = pal.partnerSkillId ? partnerSkillById.value.get(pal.partnerSkillId)?.description : undefined;
   if (!description || !/可(?:骑|坐)在/.test(description)) return "";
@@ -97,6 +125,7 @@ const movementOptions = [
   { label: "全体", value: "all" },
   { label: "陆地", value: "ground" },
   { label: "飞行", value: "fly" },
+  { label: "飞行兼落地", value: "flyAndLanding" },
   { label: "游泳", value: "swim" },
 ];
 const ownershipOptions = [
@@ -107,8 +136,9 @@ const filteredPals = computed(() => visiblePals.value.filter((pal) => {
   if (ownership.value === "owned" && !ownedIds.value.has(pal.id)) return false;
   if (element.value && !pal.elements.includes(element.value)) return false;
   if (work.value && !(work.value in pal.workSuitability)) return false;
-  if (movement.value === "ground" && pal.movement.type !== "ground") return false;
+  if (movement.value === "ground" && pal.movement.type !== "ground" && pal.movement.type !== "flyAndLanding") return false;
   if (movement.value === "fly" && !isFlight(pal)) return false;
+  if (movement.value === "flyAndLanding" && pal.movement.type !== "flyAndLanding") return false;
   if (movement.value === "swim" && pal.movement.type !== "swim") return false;
   return palMatchesSearch(pal, query.value);
 }).sort((a, b) => {
@@ -160,11 +190,11 @@ async function closeDetail() {
         <label class="field filter-search"><span class="field__label">搜索图鉴</span><NInput v-model:value="query" class="field-control" clearable size="large" placeholder="中文 / 拼音首字母 / English / 编号 / ID" :input-props="{ type: 'search', 'aria-label': '搜索图鉴' }" /></label>
         <label class="field field--compact"><span class="field__label">属性</span><NSelect v-model:value="element" class="field-control" :options="elementSelectOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '属性' }" /></label>
         <label class="field field--compact"><span class="field__label">工作</span><NSelect v-model:value="work" class="field-control" :options="workSelectOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '工作' }" /></label>
-        <label class="field field--compact"><span class="field__label">种类</span><NSelect v-model:value="movement" class="field-control" :options="movementOptions" :fallback-option="false" size="large" :input-props="{ 'aria-label': '种类' }" /></label>
+        <label class="field field--compact filter-movement"><span class="field__label">种类</span><NSelect v-model:value="movement" class="field-control" :options="movementOptions" :fallback-option="false" :consistent-menu-width="false" size="large" :input-props="{ 'aria-label': '种类' }" /></label>
         <label class="field field--compact filter-sort"><span class="field__label">排序</span><NSelect v-model:value="sortKey" class="field-control" :options="sortOptions" :fallback-option="false" :consistent-menu-width="false" filterable size="large" :input-props="{ 'aria-label': '排序' }" /></label>
         <label class="field field--compact"><span class="field__label">拥有状态</span><NSelect v-model:value="ownership" class="field-control" :options="ownershipOptions" :fallback-option="false" size="large" :input-props="{ 'aria-label': '拥有状态' }" /></label>
       </section>
-      <p class="result-note">找到 {{ filteredPals.length }} 种{{ ownership === "owned" ? "已拥有" : "" }}帕鲁 · 已拥有 {{ entries.length }} 种 · {{ work ? `${workName(work)}等级优先 · ` : "" }}{{ selectedSort.label }}</p>
+      <p class="result-note">找到 {{ filteredPals.length }} 种{{ ownership === "owned" ? "已拥有" : "" }}帕鲁 · 已拥有 {{ entries.length }} 种 · {{ work ? `${workName(work)}等级优先 · ` : "" }}{{ resultSortLabel }}</p>
       <ul class="paldex-grid">
         <li v-for="pal in filteredPals" :key="pal.id" class="paldex-item" :class="{ 'paldex-item--owned': ownedIds.has(pal.id) }">
           <RouterLink
@@ -181,7 +211,7 @@ async function closeDetail() {
                 <span class="dex-stamp">No. {{ formatDex(pal).slice(1) }}</span>
               </div>
               <div class="tag-row"><span v-for="item in pal.elements" :key="item" class="tag element-tag" :class="`element-tag--${item.toLowerCase()}`">{{ elementName(item) }}</span><span v-if="pal.variant" class="tag tag--coral">亚种</span><span v-if="mountTechnologyLabel(pal)" class="tag mount-type-badge">{{ mountMovementTypeLabel(pal) }}</span><span v-if="mountTechnologyLabel(pal)" class="tag mount-tech-badge">{{ mountTechnologyLabel(pal) }}</span><span v-if="selfBreedOnlyIds.has(pal.id)" class="self-breed-badge" title="配种时只能由同种帕鲁产出">仅可自交</span></div>
-              <div v-if="sortKey !== 'dex'" class="paldex-card__sort-value"><span>{{ selectedSort.label }}</span><strong>{{ formatSortValue(pal) }}</strong></div>
+              <div v-if="sortKey !== 'dex'" class="paldex-card__sort-value"><span>{{ sortLabelForPal(pal) }}</span><strong>{{ formatSortValue(pal) }}</strong></div>
               <div class="paldex-card__work">
                 <span class="paldex-card__work-label">工作适应性</span>
                 <ul v-if="Object.keys(pal.workSuitability).length" class="paldex-card__work-list"><li v-for="(level, item) in pal.workSuitability" :key="item" :aria-label="`${workName(item)} Lv.${level}`" :title="`${workName(item)} Lv.${level}`"><span class="work-icon" aria-hidden="true">{{ workIcon(item) }}</span><strong>Lv.{{ level }}</strong></li></ul>

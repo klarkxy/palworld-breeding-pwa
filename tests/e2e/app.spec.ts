@@ -178,19 +178,41 @@ test("@subpath 两类配种查询和图鉴入口可用", async ({ page }) => {
   await selectOption(page, "属性", "🔥 火");
   await expect(page.locator(".paldex-card").first().locator(".element-tag--fire")).toHaveText("火");
   await selectOption(page, "属性", "🌈 全部属性");
+  await selectOption(page, "属性", "⛰️ 地");
+  await expect(page.locator(".paldex-card").first().locator(".element-tag--earth")).toHaveText("地");
+  await selectOption(page, "属性", "🌈 全部属性");
   await selectOption(page, "种类", "陆地");
-  await expect(page.locator(".paldex-card")).toHaveCount(252);
+  await expect(page.locator(".paldex-card")).toHaveCount(259);
+  await expect(page.getByRole("heading", { name: "杰诺多兰", exact: true })).toBeVisible();
   await selectOption(page, "种类", "飞行");
   await expect(page.locator(".paldex-card")).toHaveCount(28);
   await expect(page.getByRole("heading", { name: "精灵龙", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "杰诺多兰", exact: true })).toBeVisible();
+  await selectOption(page, "种类", "飞行兼落地");
+  await expect(page.locator(".paldex-card")).toHaveCount(7);
+  await expect(page.getByRole("heading", { name: "唤冬兽", exact: true })).toBeVisible();
   await selectOption(page, "种类", "游泳");
   await expect(page.locator(".paldex-card")).toHaveCount(8);
   await selectOption(page, "种类", "全体");
   await expect(page.locator(".paldex-card")).toHaveCount(288);
-  await selectOption(page, "排序", "乘骑冲刺参数");
+  await selectOption(page, "排序", "按种类冲刺参数");
   await expect(page.locator(".paldex-card").first()).toContainText(/空涡龙[\s\S]*3300/);
+  await selectOption(page, "种类", "游泳");
+  await page.getByLabel("搜索图鉴").fill("Umihebi");
+  await expect(page.locator(".paldex-card__sort-value")).toHaveText(/游泳冲刺参数\s*1800/);
+  await selectOption(page, "种类", "飞行");
+  await page.getByLabel("搜索图鉴").fill("BlueSkyDragon");
+  await expect(page.locator(".paldex-card__sort-value")).toHaveText(/飞行冲刺参数\s*2800/);
+  await page.getByLabel("搜索图鉴").fill("DarkMechaDragon");
+  await expect(page.locator(".paldex-card__sort-value")).toHaveText(/飞行冲刺参数\s*2700/);
+  await selectOption(page, "种类", "陆地");
+  await expect(page.locator(".paldex-card__sort-value")).toHaveText(/陆地冲刺参数\s*660/);
+  await selectOption(page, "种类", "飞行兼落地");
+  await expect(page.locator(".paldex-card__sort-value")).toHaveText(/飞行冲刺参数\s*2700/);
+  await page.getByLabel("搜索图鉴").fill("");
+  await selectOption(page, "种类", "全体");
   const sortField = page.locator("label.field").filter({ has: page.locator(".field__label").getByText("排序", { exact: true }) });
-  await expect(sortField).toContainText("乘骑冲刺参数");
+  await expect(sortField).toContainText("按种类冲刺参数");
   await expect(sortField).not.toContainText(/[（）]/);
   if (page.viewportSize()!.width >= 1_088) {
     const kindField = page.locator("label.field").filter({ has: page.locator(".field__label").getByText("种类", { exact: true }) });
@@ -228,12 +250,20 @@ test("@subpath 两类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(drawer.getByRole("heading", { name: "0 星 / 4 星对照" })).toHaveCount(0);
   const statsCard = drawer.locator(".stats-card");
   const workCard = drawer.locator(".work-card");
+  const movementCard = drawer.locator(".movement-card");
+  const partnerSkill = page.locator(".partner-skill-card");
+  const detailCards = await Promise.all([statsCard, workCard, movementCard, partnerSkill]
+    .map((card) => card.boundingBox()));
+  for (let index = 1; index < detailCards.length; index += 1)
+    expect(detailCards[index]!.y).toBeGreaterThanOrEqual(detailCards[index - 1]!.y + detailCards[index - 1]!.height - 1);
+  const workColumns = await workCard.locator(".level-list").evaluate((list) =>
+    getComputedStyle(list).gridTemplateColumns.split(" ").length);
+  expect(workColumns).toBe(page.viewportSize()!.width < 672 ? 1 : 2);
   await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "生命" })).toHaveText("生命70");
   await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "攻击" })).toHaveText("攻击85");
   await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "防御" })).toHaveText("防御80");
   await expect(statsCard.locator(".stat-grid > div").filter({ hasText: "体力" })).toHaveText("体力100");
   await expect(workCard).toContainText(/手工作业\s*Lv\.3[\s\S]*制药\s*Lv\.4[\s\S]*搬运\s*Lv\.2/);
-  const partnerSkill = page.locator(".partner-skill-card");
   await expect(partnerSkill.getByRole("heading", { name: "播撒欢笑的亡者" })).toBeVisible();
   await expect(partnerSkill.locator(".partner-skill-description")).toContainText("攻击力降低40%");
   await expect(partnerSkill.getByRole("heading", { name: "0 星具体参数" })).toBeVisible();
@@ -252,7 +282,6 @@ test("@subpath 两类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(partnerSkill.locator(".partner-skill-description")).not.toContainText("40%");
   await expect(partnerSkill.locator(".partner-metric-list")).toContainText(/攻击中毒目标时施加降攻[\s\S]*80%[\s\S]*玩家/);
   await expect(partnerSkill.locator(".partner-metric-list")).not.toContainText("40");
-  const movementCard = drawer.locator(".movement-card");
   await expect(movementCard.getByRole("heading", { name: "移动参数" })).toBeVisible();
   await expect(movementCard).toContainText(/内部移动类型：\s*地面[\s\S]*奔跑参数/);
   await expect(movementCard.locator(".movement-note")).toHaveCount(0);

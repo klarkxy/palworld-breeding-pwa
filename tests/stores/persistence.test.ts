@@ -280,12 +280,23 @@ describe("Pinia local persistence", () => {
     expect(paldex.sortKey).toBe("attack");
     expect(paldex.selectedStars).toBe(4);
     expect(paldex.movement).toBe("fly");
+    paldex.applyRoute({ movement: "flyAndLanding" });
+    expect(paldex.movement).toBe("flyAndLanding");
     paldex.applyRoute({ sort: "invalid", stars: "9", movement: "invalid" });
     expect(paldex.sortKey).toBe("attack");
     expect(paldex.selectedStars).toBe(4);
-    expect(paldex.movement).toBe("fly");
+    expect(paldex.movement).toBe("flyAndLanding");
     expect(paldex.applyRoute({ variant: "base" })).toBe(false);
-    expect(paldex.movement).toBe("fly");
+    expect(paldex.movement).toBe("flyAndLanding");
+    expect(decodePaldexSnapshot({
+      schema: 2,
+      query: "",
+      element: "",
+      work: "",
+      movement: "flyAndLanding",
+      sortKey: "dex",
+      selectedStars: 0,
+    })).toMatchObject({ schema: 2, movement: "flyAndLanding" });
     expect(decodePaldexSnapshot({
       schema: 1,
       query: "legacy",

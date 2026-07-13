@@ -262,7 +262,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .detail-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; }
 .detail-owned { align-self: end; }
 .detail-owned legend { grid-column: 1 / -1; margin-bottom: .45rem; font-size: .82rem; font-weight: 800; color: var(--ink-soft); }
-.detail-grid { display: grid; gap: 1rem; }
+.detail-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 1rem; }
 .detail-grid .eggshell-card h2 { margin-bottom: 1rem; font-size: 1.3rem; }
 .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .55rem; margin: 0; }
 .stat-grid div, .level-list li { display: flex; justify-content: space-between; gap: .5rem; padding: .65rem; border-radius: .75rem; background: var(--sky-50); }
@@ -310,7 +310,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   .paldex-drawer .detail-owned { grid-column: 1 / -1; justify-content: end; }
   .detail-hero { grid-template-columns: 16rem minmax(0,1fr); align-items: center; }
   .detail-owned { grid-column: 1 / -1; justify-content: end; }
-  .detail-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .work-card .level-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 
 @media (min-width: 48rem) {
@@ -326,10 +326,9 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 @media (min-width: 68rem) {
   .brand strong { font-size: 1.05rem; }
   .calculator-fields { grid-template-columns: minmax(0,1fr) 4rem minmax(0,1fr); }
-  .filter-bar--paldex { grid-template-columns: minmax(14rem,1.2fr) repeat(3, minmax(6.5rem,.45fr)) minmax(10.5rem,.75fr) minmax(7rem,.45fr); }
+  .filter-bar--paldex { grid-template-columns: minmax(14rem,1.2fr) repeat(2, minmax(6.5rem,.45fr)) minmax(8rem,.55fr) minmax(10.5rem,.75fr) minmax(7rem,.45fr); }
   .paldex-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
   :root { --paldex-drawer-width: min(50vw, 56rem); }
-  .paldex-drawer .detail-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .detail-hero { grid-template-columns: 19rem minmax(0,1fr) 16rem; }
   .detail-owned { grid-column: auto; }
 }

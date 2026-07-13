@@ -5,7 +5,7 @@ import {
   buildBreedingIndex, getChildren,
   type ActiveSkillRecord, type BreedRule, type PalRecord, type PartnerSkillRecord,
 } from "../../src/core";
-import { palMatchesSearch, palPinyinInitials } from "../../src/composables/usePalData";
+import { elementIcon, palMatchesSearch, palPinyinInitials } from "../../src/composables/usePalData";
 
 const read = <T>(name: string): T => JSON.parse(readFileSync(resolve("public/data", name), "utf8")) as T;
 const pals = read<{ pals: PalRecord[] }>("paldex.json").pals;
@@ -57,6 +57,7 @@ describe("Palworld 1.0 generated data", () => {
     expect(palPinyinInitials(visible.find((pal) => pal.id === "OniGhostGirl")!)).toBe("xsn");
     expect(palPinyinInitials(visible.find((pal) => pal.id === "ClioneTwins")!)).toBe("loln");
     expect(palPinyinInitials(visible.find((pal) => pal.id === "CubeTurtle")!)).toBe("zyg");
+    expect(elementIcon("earth")).toBe("⛰️");
   });
 
   it("keeps locally unpacked movement parameters and Blueprint overrides", () => {

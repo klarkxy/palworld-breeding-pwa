@@ -3,7 +3,7 @@ import { onScopeDispose, ref, watch } from "vue";
 import { bindLocalStorage } from "@/stores/persistence";
 
 export const PALDEX_STORAGE_KEY = "pal-lab.paldex.v1";
-export type PaldexMovement = "all" | "ground" | "fly" | "swim";
+export type PaldexMovement = "all" | "ground" | "fly" | "flyAndLanding" | "swim";
 export type PaldexSortKey = "dex" | "hp" | "attack" | "defense" | "stamina" | "maleProbability" | "breedingPower"
   | "slowWalkSpeed" | "walkSpeed" | "runSpeed" | "rideSprintSpeed" | "transportSpeed"
   | "swimSpeed" | "swimDashSpeed" | "flightBaseSpeed" | "flightBaseSprint"
@@ -29,7 +29,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
 const text = (value: unknown, max = 200) => typeof value === "string" ? value.slice(0, max) : "";
 const movementValue = (value: unknown): PaldexMovement =>
-  value === "ground" || value === "fly" || value === "swim" ? value : "all";
+  value === "ground" || value === "fly" || value === "flyAndLanding" || value === "swim" ? value : "all";
 const sortValue = (value: unknown): PaldexSortKey =>
   typeof value === "string" && sortKeys.has(value as PaldexSortKey) ? value as PaldexSortKey : "dex";
 const queryValue = (value: unknown) => Array.isArray(value) ? value[0] : value;
@@ -118,7 +118,7 @@ export const usePaldexStore = defineStore("paldex", () => {
     }
     if ("movement" in routeQuery) {
       const routeMovement = queryValue(routeQuery.movement);
-      if (routeMovement === "all" || routeMovement === "ground" || routeMovement === "fly" || routeMovement === "swim")
+      if (routeMovement === "all" || routeMovement === "ground" || routeMovement === "fly" || routeMovement === "flyAndLanding" || routeMovement === "swim")
         movement.value = routeMovement;
     }
     if ("sort" in routeQuery) {
