@@ -3,18 +3,18 @@ import { onScopeDispose, ref, watch } from "vue";
 import { bindLocalStorage } from "@/stores/persistence";
 
 export const PALDEX_STORAGE_KEY = "pal-lab.paldex.v1";
-export type PaldexVariant = "all" | "base" | "variant";
+export type PaldexMovement = "all" | "ground" | "fly" | "swim";
 export type PaldexSortKey = "dex" | "hp" | "attack" | "defense" | "stamina" | "maleProbability" | "breedingPower"
   | "slowWalkSpeed" | "walkSpeed" | "runSpeed" | "rideSprintSpeed" | "transportSpeed"
   | "swimSpeed" | "swimDashSpeed" | "flightBaseSpeed" | "flightBaseSprint"
   | "flySpeedOverride" | "flySprintSpeedOverride";
 
 interface PaldexSnapshot {
-  schema: 1;
+  schema: 2;
   query: string;
   element: string;
   work: string;
-  variant: PaldexVariant;
+  movement: PaldexMovement;
   sortKey: PaldexSortKey;
   selectedStars: 0 | 4;
 }
@@ -28,19 +28,20 @@ const sortKeys = new Set<PaldexSortKey>([
 const isObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
 const text = (value: unknown, max = 200) => typeof value === "string" ? value.slice(0, max) : "";
-const variantValue = (value: unknown): PaldexVariant => value === "base" || value === "variant" ? value : "all";
+const movementValue = (value: unknown): PaldexMovement =>
+  value === "ground" || value === "fly" || value === "swim" ? value : "all";
 const sortValue = (value: unknown): PaldexSortKey =>
   typeof value === "string" && sortKeys.has(value as PaldexSortKey) ? value as PaldexSortKey : "dex";
 const queryValue = (value: unknown) => Array.isArray(value) ? value[0] : value;
 
 export function decodePaldexSnapshot(value: unknown): PaldexSnapshot | undefined {
-  if (!isObject(value) || value.schema !== 1) return undefined;
+  if (!isObject(value) || (value.schema !== 1 && value.schema !== 2)) return undefined;
   return {
-    schema: 1,
+    schema: 2,
     query: text(value.query),
     element: text(value.element, 64),
     work: text(value.work, 64),
-    variant: variantValue(value.variant),
+    movement: value.schema === 2 ? movementValue(value.movement) : "all",
     sortKey: sortValue(value.sortKey),
     selectedStars: value.selectedStars === 4 ? 4 : 0,
   };
@@ -50,7 +51,7 @@ export const usePaldexStore = defineStore("paldex", () => {
   const query = ref("");
   const element = ref("");
   const work = ref("");
-  const variant = ref<PaldexVariant>("all");
+  const movement = ref<PaldexMovement>("all");
   const sortKey = ref<PaldexSortKey>("dex");
   const selectedStars = ref<0 | 4>(0);
   const persistenceError = ref("");
@@ -66,7 +67,7 @@ export const usePaldexStore = defineStore("paldex", () => {
     query.value = "";
     element.value = "";
     work.value = "";
-    variant.value = "all";
+    movement.value = "all";
     sortKey.value = "dex";
     selectedStars.value = 0;
   };
@@ -75,7 +76,7 @@ export const usePaldexStore = defineStore("paldex", () => {
     query.value = stored.query;
     element.value = stored.element;
     work.value = stored.work;
-    variant.value = stored.variant;
+    movement.value = stored.movement;
     sortKey.value = stored.sortKey;
     selectedStars.value = stored.selectedStars;
     sanitizeCurrent();
@@ -84,16 +85,16 @@ export const usePaldexStore = defineStore("paldex", () => {
     key: PALDEX_STORAGE_KEY,
     decode: decodePaldexSnapshot,
     snapshot: () => ({
-      schema: 1,
+      schema: 2,
       query: query.value,
       element: element.value,
       work: work.value,
-      variant: variant.value,
+      movement: movement.value,
       sortKey: sortKey.value,
       selectedStars: selectedStars.value,
     } satisfies PaldexSnapshot),
     apply,
-    subscribe: (persist) => watch([query, element, work, variant, sortKey, selectedStars], persist, { flush: "sync" }),
+    subscribe: (persist) => watch([query, element, work, movement, sortKey, selectedStars], persist, { flush: "sync" }),
     onError: (message) => { persistenceError.value = message; },
   });
   onScopeDispose(binding.stop);
@@ -105,7 +106,7 @@ export const usePaldexStore = defineStore("paldex", () => {
   }
 
   function applyRoute(routeQuery: Readonly<Record<string, unknown>>) {
-    if (!["q", "element", "work", "variant", "sort", "stars"].some((key) => key in routeQuery)) return false;
+    if (!["q", "element", "work", "movement", "sort", "stars"].some((key) => key in routeQuery)) return false;
     if ("q" in routeQuery) query.value = text(queryValue(routeQuery.q));
     if ("element" in routeQuery) {
       const routeElement = text(queryValue(routeQuery.element), 64);
@@ -115,9 +116,10 @@ export const usePaldexStore = defineStore("paldex", () => {
       const routeWork = text(queryValue(routeQuery.work), 64);
       if (!routeWork || !validWorks || validWorks.has(routeWork)) work.value = routeWork;
     }
-    if ("variant" in routeQuery) {
-      const routeVariant = queryValue(routeQuery.variant);
-      if (routeVariant === "all" || routeVariant === "base" || routeVariant === "variant") variant.value = routeVariant;
+    if ("movement" in routeQuery) {
+      const routeMovement = queryValue(routeQuery.movement);
+      if (routeMovement === "all" || routeMovement === "ground" || routeMovement === "fly" || routeMovement === "swim")
+        movement.value = routeMovement;
     }
     if ("sort" in routeQuery) {
       const routeSort = queryValue(routeQuery.sort);
@@ -131,5 +133,5 @@ export const usePaldexStore = defineStore("paldex", () => {
     return true;
   }
 
-  return { query, element, work, variant, sortKey, selectedStars, persistenceError, applyRoute, sanitize, reset };
+  return { query, element, work, movement, sortKey, selectedStars, persistenceError, applyRoute, sanitize, reset };
 });

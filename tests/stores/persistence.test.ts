@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useBreedingStore, BREEDING_STORAGE_KEY } from "../../src/stores/breeding";
 import { COLLECTION_STORAGE_KEY, decodeStoredCollection, useCollectionStore } from "../../src/stores/collection";
-import { PALDEX_STORAGE_KEY, usePaldexStore } from "../../src/stores/paldex";
+import { decodePaldexSnapshot, PALDEX_STORAGE_KEY, usePaldexStore } from "../../src/stores/paldex";
 import { decodePathsSnapshot, PATHS_STORAGE_KEY, usePathsStore } from "../../src/stores/paths";
 
 describe("Pinia local persistence", () => {
@@ -274,15 +274,27 @@ describe("Pinia local persistence", () => {
     paldex.sanitize(new Set(["fire"]), new Set(["mining"]));
     paldex.query = "saved";
     paldex.element = "fire";
-    paldex.applyRoute({ sort: "attack", stars: "4" });
+    paldex.applyRoute({ sort: "attack", stars: "4", movement: "fly" });
     expect(paldex.query).toBe("saved");
     expect(paldex.element).toBe("fire");
     expect(paldex.sortKey).toBe("attack");
     expect(paldex.selectedStars).toBe(4);
-    paldex.applyRoute({ sort: "invalid", stars: "9", variant: "invalid" });
+    expect(paldex.movement).toBe("fly");
+    paldex.applyRoute({ sort: "invalid", stars: "9", movement: "invalid" });
     expect(paldex.sortKey).toBe("attack");
     expect(paldex.selectedStars).toBe(4);
-    expect(paldex.variant).toBe("all");
+    expect(paldex.movement).toBe("fly");
+    expect(paldex.applyRoute({ variant: "base" })).toBe(false);
+    expect(paldex.movement).toBe("fly");
+    expect(decodePaldexSnapshot({
+      schema: 1,
+      query: "legacy",
+      element: "fire",
+      work: "mining",
+      variant: "base",
+      sortKey: "attack",
+      selectedStars: 4,
+    })).toMatchObject({ schema: 2, query: "legacy", movement: "all" });
     paldex.$dispose();
   });
 
@@ -336,17 +348,18 @@ describe("Pinia local persistence", () => {
       key: PALDEX_STORAGE_KEY,
       storageArea: localStorage,
       newValue: JSON.stringify({
-        schema: 1,
+        schema: 2,
         query: "",
         element: "removed",
         work: "removed",
-        variant: "all",
+        movement: "swim",
         sortKey: "dex",
         selectedStars: 0,
       }),
     }));
     expect(paldex.element).toBe("");
     expect(paldex.work).toBe("");
+    expect(paldex.movement).toBe("swim");
     paldex.$dispose();
   });
 });

@@ -43,6 +43,10 @@ const elementNames: Record<string, string> = {
   dark: "暗", dragon: "龙", earth: "地", electricity: "雷", electric: "雷",
   fire: "火", grass: "草", leaf: "草", ice: "冰", neutral: "无", normal: "无", water: "水",
 };
+const elementIcons: Record<string, string> = {
+  dark: "🌙", dragon: "🐉", earth: "🪨", electricity: "⚡", electric: "⚡",
+  fire: "🔥", grass: "🌿", leaf: "🌿", ice: "❄️", neutral: "⚪", normal: "⚪", water: "💧",
+};
 const workNames: Record<string, string> = {
   kindling: "生火", watering: "浇水", planting: "播种", generatingelectricity: "发电", generateelectricity: "发电",
   handiwork: "手工作业", gathering: "采集", lumbering: "伐木", mining: "采矿",
@@ -57,6 +61,10 @@ const keyOf = (value: string) => value.toLocaleLowerCase().replace(/[^a-z]/g, ""
 
 export function elementName(value: string) {
   return elementNames[keyOf(value)] ?? value;
+}
+
+export function elementIcon(value: string) {
+  return elementIcons[keyOf(value)] ?? "✨";
 }
 
 export function workName(value: string) {

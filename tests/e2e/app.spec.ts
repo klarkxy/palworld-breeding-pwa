@@ -25,9 +25,14 @@ async function selectOption(page: Page, label: string, optionLabel: string) {
   const field = page.locator("label.field").filter({ has: page.locator(".field__label").getByText(label, { exact: true }) });
   await field.locator(".n-base-selection").click();
   const menu = page.locator(".n-base-select-menu:visible").last();
-  const list = menu.locator(".n-virtual-list");
   const option = menu.locator(".n-base-select-option").filter({ hasText: new RegExp(`^\\s*${escapeRegExp(optionLabel)}\\s*$`) });
   await expect(menu).toBeVisible();
+  if (await option.count()) {
+    await option.first().click();
+    await expect(page.locator(".n-base-select-menu:visible")).toHaveCount(0);
+    return;
+  }
+  const list = menu.locator(".n-virtual-list");
   await list.evaluate((element) => {
     element.scrollTop = 0;
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
@@ -170,17 +175,37 @@ test("@subpath 两类配种查询和图鉴入口可用", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByLabel("搜索图鉴").fill("");
   await expect(page.getByLabel("搜索图鉴")).toHaveValue("");
-  await selectOption(page, "排序", "乘骑冲刺参数（高→低）");
+  await selectOption(page, "属性", "🔥 火");
+  await expect(page.locator(".paldex-card").first().locator(".element-tag--fire")).toHaveText("火");
+  await selectOption(page, "属性", "🌈 全部属性");
+  await selectOption(page, "种类", "陆地");
+  await expect(page.locator(".paldex-card")).toHaveCount(252);
+  await selectOption(page, "种类", "飞行");
+  await expect(page.locator(".paldex-card")).toHaveCount(28);
+  await expect(page.getByRole("heading", { name: "精灵龙", exact: true })).toBeVisible();
+  await selectOption(page, "种类", "游泳");
+  await expect(page.locator(".paldex-card")).toHaveCount(8);
+  await selectOption(page, "种类", "全体");
+  await expect(page.locator(".paldex-card")).toHaveCount(288);
+  await selectOption(page, "排序", "乘骑冲刺参数");
   await expect(page.locator(".paldex-card").first()).toContainText(/空涡龙[\s\S]*3300/);
+  const sortField = page.locator("label.field").filter({ has: page.locator(".field__label").getByText("排序", { exact: true }) });
+  await expect(sortField).toContainText("乘骑冲刺参数");
+  await expect(sortField).not.toContainText(/[（）]/);
+  if (page.viewportSize()!.width >= 1_088) {
+    const kindField = page.locator("label.field").filter({ has: page.locator(".field__label").getByText("种类", { exact: true }) });
+    const [sortBox, kindBox] = await Promise.all([sortField.boundingBox(), kindField.boundingBox()]);
+    expect(sortBox!.width).toBeGreaterThan(kindBox!.width);
+  }
   const filterBarFits = await page.locator(".filter-bar--paldex").evaluate((element) =>
     element.scrollWidth <= element.clientWidth + 1);
   expect(filterBarFits).toBe(true);
-  await selectOption(page, "工作", "采矿");
+  await selectOption(page, "工作", "⛏️ 采矿");
   await expect(page.locator(".paldex-card").first()).toContainText(/磐甲龙[\s\S]*No\. 184/);
-  await selectOption(page, "工作", "全部工作");
-  await selectOption(page, "排序", "飞行覆盖值（高→低）");
+  await selectOption(page, "工作", "🧰 全部工作");
+  await selectOption(page, "排序", "飞行覆盖值");
   await expect(page.locator(".paldex-card").first()).toContainText(/杰诺多兰[\s\S]*1700/);
-  await selectOption(page, "排序", "图鉴编号（低→高）");
+  await selectOption(page, "排序", "图鉴编号");
   await expect(page.locator(".paldex-card").first()).toContainText(/棉悠悠[\s\S]*No\. 001/);
   await page.getByLabel("搜索图鉴").fill("xsn");
   await expect(page.locator(".paldex-card")).toHaveCount(1);
@@ -343,7 +368,7 @@ test("图鉴已拥有标记支持旧地址、排序、刷新和库存路线", as
 
   await selectOption(page, "拥有状态", "仅已拥有");
   await expect(page).toHaveURL(/view=owned/);
-  await selectOption(page, "排序", "攻击（高→低）");
+  await selectOption(page, "排序", "攻击");
   await expect(page.locator(".paldex-card").first()).toContainText("吓丝妮");
 
   const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("pal-lab.collection.v1") ?? "null") as {
@@ -398,7 +423,7 @@ test("表单跨路由、刷新和新页面恢复，路线结果按条件重新�
 
   await page.getByRole("link", { name: "图鉴", exact: true }).click();
   await page.getByLabel("搜索图鉴").fill("xsn");
-  await selectOption(page, "排序", "攻击（高→低）");
+  await selectOption(page, "排序", "攻击");
   await page.locator(".paldex-card").click();
   const drawer = palDrawer(page, "吓丝妮");
   await drawer.getByText("4 星", { exact: true }).click();
@@ -422,7 +447,7 @@ test("表单跨路由、刷新和新页面恢复，路线结果按条件重新�
   await expect(restored.locator(".plan-card").first()).toBeVisible();
   await restored.getByRole("link", { name: "图鉴", exact: true }).click();
   await expect(restored.getByLabel("搜索图鉴")).toHaveValue("xsn");
-  await expect(restored.locator(".field").filter({ hasText: "排序" })).toContainText("攻击（高→低）");
+  await expect(restored.locator(".field").filter({ hasText: "排序" })).toContainText("攻击");
   await restored.locator(".paldex-card").click();
   await expect(palDrawer(restored, "吓丝妮").getByRole("radio", { name: "4 星", exact: true })).toBeChecked();
   await restored.close();

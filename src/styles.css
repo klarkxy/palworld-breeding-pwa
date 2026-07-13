@@ -326,7 +326,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 @media (min-width: 68rem) {
   .brand strong { font-size: 1.05rem; }
   .calculator-fields { grid-template-columns: minmax(0,1fr) 4rem minmax(0,1fr); }
-  .filter-bar--paldex { grid-template-columns: minmax(14rem,1.35fr) repeat(5, minmax(6.5rem,.45fr)); }
+  .filter-bar--paldex { grid-template-columns: minmax(14rem,1.2fr) repeat(3, minmax(6.5rem,.45fr)) minmax(10.5rem,.75fr) minmax(7rem,.45fr); }
   .paldex-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
   :root { --paldex-drawer-width: min(50vw, 56rem); }
   .paldex-drawer .detail-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
