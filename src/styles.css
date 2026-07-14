@@ -68,10 +68,28 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .issue-link svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
 
 .page-shell { width: min(72rem, calc(100% - 2rem)); min-height: 70vh; margin: 0 auto; padding: 2.6rem 0 4rem; }
-.page-intro { max-width: 47rem; margin-bottom: 1.9rem; }
-.page-intro h1 { max-width: 15ch; margin-bottom: .75rem; font-size: clamp(2.25rem, 8vw, 4.9rem); line-height: .98; }
-.page-intro > p:last-child { max-width: 43rem; margin-bottom: 0; color: var(--ink-soft); font-size: .96rem; line-height: 1.8; }
+.page-intro { display: grid; max-width: 58rem; grid-template-areas: "eyebrow" "title" "description" "actions"; grid-template-columns: minmax(0,1fr); margin-bottom: 1.9rem; }
+.page-intro .eyebrow { grid-area: eyebrow; }
+.page-intro h1 { max-width: 15ch; grid-area: title; margin-bottom: .75rem; font-size: clamp(2.25rem, 8vw, 4.9rem); line-height: .98; }
+.page-intro__description { max-width: 43rem; grid-area: description; margin-bottom: 0; color: var(--ink-soft); font-size: .96rem; line-height: 1.8; }
+.page-intro__actions { grid-area: actions; justify-self: start; margin-top: 1rem; }
 .eyebrow { margin-bottom: .55rem; color: var(--sky-700); font: 800 .78rem/1.2 var(--utility); letter-spacing: .13em; text-transform: uppercase; }
+
+.share-action { position: relative; display: grid; justify-items: end; }
+.share-button { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; gap: .45rem; padding: .58rem .9rem; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.88); color: var(--sky-700); font: 800 .86rem/1 var(--utility); box-shadow: 0 7px 16px rgba(35,104,124,.1); white-space: nowrap; }
+.share-button:hover { border-color: var(--sky-500); background: white; }
+.share-button:disabled { cursor: wait; opacity: .68; }
+.share-button svg { width: 1.05rem; height: 1.05rem; flex: none; fill: currentColor; }
+.share-manual-copy { position: absolute; z-index: 15; top: calc(100% + .55rem); right: 0; display: grid; width: min(24rem, calc(100vw - 2rem)); gap: .45rem; padding: .8rem; border: 1px solid var(--line); border-radius: 1rem; background: white; box-shadow: 0 16px 36px rgba(23,60,74,.22); }
+.share-manual-copy label { color: var(--ink-soft); font-size: .78rem; font-weight: 800; line-height: 1.45; }
+.share-manual-copy input { width: 100%; min-height: 2.5rem; padding: .5rem .65rem; border: 1px solid var(--sky-300); border-radius: .65rem; background: var(--sky-50); color: var(--ink); font: 600 .78rem/1.35 var(--utility); }
+.page-intro__actions .share-manual-copy { right: auto; left: 0; }
+.item-drawer__topbar { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: .75rem; }
+.item-drawer__topbar > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-drawer__actions { position: relative; display: flex; align-items: center; gap: .5rem; }
+.item-drawer__actions .share-action, .paldex-drawer__actions .share-action { position: static; }
+.item-drawer__actions .share-manual-copy, .paldex-drawer__actions .share-manual-copy { right: .75rem; }
+.paldex-drawer__topbar > .paldex-drawer__actions { position: relative; display: flex; align-items: center; gap: .5rem; }
 
 .eggshell-card { position: relative; padding: 1.35rem; border: 1px solid rgba(171, 207, 216, .72); border-radius: 2.2rem 1.25rem 1.8rem 1.5rem / 1.7rem 1.7rem 1.5rem 2rem; background: var(--shell); box-shadow: var(--shadow); overflow: hidden; }
 .eggshell-card::before { content: ""; position: absolute; top: -.38rem; left: 1.6rem; width: 4.8rem; height: 1rem; border: 1px solid rgba(8,112,143,.25); border-radius: 50%; background: var(--shell-deep); box-shadow: inset 0 -4px 0 rgba(255,213,106,.38); transform: rotate(-4deg); }
@@ -434,6 +452,9 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 
 @media (min-width: 42rem) {
   .page-shell { width: min(72rem, calc(100% - 3rem)); padding-top: 4rem; }
+  .page-intro { grid-template-areas: "eyebrow eyebrow" "title actions" "description description"; grid-template-columns: minmax(0,1fr) auto; column-gap: 1.5rem; }
+  .page-intro__actions { align-self: center; justify-self: end; margin-top: 0; }
+  .page-intro__actions .share-manual-copy { right: 0; left: auto; }
   .page-shell.page-shell--passives { width: min(82rem, calc(100% - 3rem)); }
   .page-shell.page-shell--items { width: min(82rem, calc(100% - 3rem)); }
   .calculator-fields, .route-form__grid { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }

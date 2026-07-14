@@ -6,8 +6,10 @@ import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
 import PalIcon from "@/components/PalIcon.vue";
+import ShareButton from "@/components/ShareButton.vue";
 import { elementName, formatDex, isSelectablePal, workName } from "@/composables/usePalData";
 import type { PartnerSkillRefinementMetric } from "@/core";
+import { snapshotQuery } from "@/routing/queryState";
 import { useCollectionStore } from "@/stores/collection";
 import { usePalDataStore } from "@/stores/palData";
 import { usePaldexStore } from "@/stores/paldex";
@@ -19,8 +21,8 @@ const palData = usePalDataStore();
 const collection = useCollectionStore();
 const paldex = usePaldexStore();
 const { palById, activeSkillById, partnerSkillById, selfBreedOnlyIds, isLoading, error } = storeToRefs(palData);
-const { entries } = storeToRefs(collection);
-const { selectedStars } = storeToRefs(paldex);
+const { entries, view: ownership } = storeToRefs(collection);
+const { query, element, work, movement, sortKey, selectedStars } = storeToRefs(paldex);
 const { load } = palData;
 const { setOwned } = collection;
 const isOpen = ref(true);
@@ -29,6 +31,20 @@ const pal = computed(() => {
   const candidate = palById.value.get(id.value ?? "");
   return candidate && isSelectablePal(candidate) ? candidate : undefined;
 });
+const detailShareTo = computed(() => ({
+  name: "paldex-detail",
+  params: { id: id.value ?? "" },
+  query: snapshotQuery({
+    q: query.value || undefined,
+    element: element.value || undefined,
+    work: work.value || undefined,
+    movement: movement.value === "all" ? undefined : movement.value,
+    sort: sortKey.value === "dex" ? undefined : sortKey.value,
+    view: ownership.value === "all" ? undefined : ownership.value,
+    stars: selectedStars.value === 4 ? "4" : undefined,
+  }),
+}));
+
 const isOwned = computed(() => entries.value.some((entry) => entry.palId === pal.value?.id));
 const malePercent = computed(() => {
   const value = pal.value?.maleProbability ?? 0.5;
@@ -253,8 +269,8 @@ const metricContext = (metric: PartnerSkillRefinementMetric) => {
 function openCalculator(kind: "parent" | "target") {
   if (!pal.value) return;
   router.push(kind === "parent"
-    ? { path: "/breeding", query: { mode: "forward", a: pal.value.id } }
-    : { path: "/breeding", query: { mode: "pairs", target: pal.value.id } });
+    ? { path: "/breeding", query: snapshotQuery({ a: pal.value.id }) }
+    : { path: "/breeding", query: snapshotQuery({ mode: "pairs", target: pal.value.id }) });
 }
 
 function closeOnEscape(event: KeyboardEvent) {
@@ -300,7 +316,16 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
       <template #header>
         <header class="paldex-drawer__topbar">
           <div><small>详细图鉴</small><strong>{{ pal?.names.zh ?? "帕鲁" }}</strong></div>
-          <NButton class="paldex-drawer__close" circle quaternary aria-label="关闭详细图鉴" @click="isOpen = false">×</NButton>
+          <div class="paldex-drawer__actions">
+            <ShareButton
+              v-if="pal"
+              :to="detailShareTo"
+              label="分享详情"
+              :title="`分享${pal.names.zh}的帕鲁详情`"
+              :text="`查看${pal.names.zh}的详细图鉴`"
+            />
+            <NButton class="paldex-drawer__close" circle quaternary aria-label="关闭详细图鉴" @click="isOpen = false">×</NButton>
+          </div>
         </header>
       </template>
     <DataState :is-loading :error @retry="load">

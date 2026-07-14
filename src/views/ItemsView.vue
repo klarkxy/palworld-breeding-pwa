@@ -13,12 +13,17 @@ import ItemCraftTree from "@/components/ItemCraftTree.vue";
 import ItemDropSources from "@/components/ItemDropSources.vue";
 import ItemIcon from "@/components/ItemIcon.vue";
 import PageIntro from "@/components/PageIntro.vue";
+import ShareButton from "@/components/ShareButton.vue";
 import { buildItemCraftTree } from "@/components/itemCraftTree";
 import {
   calculateItemEconomicsForView, calculateItemPlanForView, itemCraftIssueText,
 } from "@/composables/itemCalculatorAdapter";
 import { isCalculationRecipe, isPalSphereRecyclingRecipe } from "@/composables/itemRecipePolicy";
 import type { ItemCraftIssue } from "@/core/itemCalculator";
+import {
+  decodeChoiceQuery, encodeChoiceQuery, isSnapshotQuery, queriesEqual,
+  queryEnum, queryInteger, queryText, snapshotQuery,
+} from "@/routing/queryState";
 import { useItemDataStore } from "@/stores/itemData";
 import { usePalDataStore } from "@/stores/palData";
 import type { ItemRecipeRecord, ItemRecord } from "@/stores/itemData";
@@ -37,16 +42,20 @@ const {
 const { palById, activeSkillById } = storeToRefs(palData);
 const { load } = itemData;
 
-const mode = ref<PageMode>("catalog");
+const mode = computed<PageMode>(() => route.name === "item-calculator" ? "calculator" : "catalog");
 const query = ref("");
 const category = ref("");
 const itemSort = ref<ItemSort>("default");
 const visibleLimit = ref(120);
-const selectedItemId = ref("");
-const pendingCalculatorItemId = ref("");
+const selectedItemId = computed(() => {
+  if (route.name !== "item-detail") return "";
+  const value = Array.isArray(route.params.itemId) ? route.params.itemId[0] : route.params.itemId;
+  return typeof value === "string" ? value : "";
+});
 const targetItemId = ref("");
 const quantity = ref(1);
 const recipeChoices = ref<Record<string, string>>({});
+const itemSortValues = new Set<ItemSort>(["default", "work-asc", "work-desc", "efficiency-desc", "efficiency-asc"]);
 
 const TYPE_A_LABELS: Readonly<Record<string, string>> = {
   Accessory: "饰品",
@@ -215,35 +224,48 @@ const RARITY_LABELS: Readonly<Record<number, string>> = {
   5: "特殊",
 };
 
-const queryValue = (value: unknown) => Array.isArray(value) ? value[0] : value;
-const positiveInteger = (value: unknown) => {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
-};
+const positiveInteger = (value: unknown) => typeof value === "number"
+  ? Number.isSafeInteger(value) ? Math.min(999_999_999, Math.max(1, value)) : 1
+  : queryInteger(value, 1, 999_999_999) ?? 1;
 
-watch(() => route.query, (next) => {
-  mode.value = queryValue(next.mode) === "calculator" ? "calculator" : "catalog";
-  const target = queryValue(next.target);
-  targetItemId.value = typeof target === "string" ? target.slice(0, 160) : "";
-  quantity.value = positiveInteger(queryValue(next.qty));
+let applyingRoute = false;
+watch([() => route.name, () => route.query], ([routeName, next]) => {
+  if (routeName !== "items" && routeName !== "item-detail" && routeName !== "item-calculator") return;
+  applyingRoute = true;
+  try {
+    const snapshot = isSnapshotQuery(next);
+    if (mode.value === "calculator") {
+      if (snapshot) {
+        targetItemId.value = "";
+        quantity.value = 1;
+        recipeChoices.value = {};
+      }
+      if ("target" in next) targetItemId.value = queryText(next.target, 160) ?? "";
+      if ("qty" in next) quantity.value = positiveInteger(next.qty);
+      if (snapshot || "choice" in next)
+        recipeChoices.value = decodeChoiceQuery(next.choice);
+    } else {
+      if (snapshot) {
+        query.value = "";
+        category.value = "";
+        itemSort.value = "default";
+      }
+      if ("q" in next) query.value = queryText(next.q) ?? "";
+      if ("category" in next) category.value = queryText(next.category, 64) ?? "";
+      if ("sort" in next) {
+        const nextSort = queryEnum(next.sort, itemSortValues);
+        if (nextSort) itemSort.value = nextSort;
+      }
+    }
+  } finally {
+    applyingRoute = false;
+  }
 }, { immediate: true });
-
-watch([mode, targetItemId, quantity], ([nextMode, target, nextQuantity]) => {
-  const nextQuery = nextMode === "calculator"
-    ? { mode: "calculator", ...(target ? { target } : {}), qty: String(nextQuantity) }
-    : {};
-  const current = JSON.stringify(route.query);
-  if (current !== JSON.stringify(nextQuery)) void router.replace({ query: nextQuery });
-}, { flush: "post" });
 
 watch([query, category, itemSort], () => { visibleLimit.value = 120; });
 watch(targetItemId, (next, previous) => {
-  if (next !== previous) recipeChoices.value = {};
-});
-watch([items, targetItemId], () => {
-  if (targetItemId.value && items.value.length && !itemById.value.has(targetItemId.value))
-    targetItemId.value = "";
-});
+  if (!applyingRoute && next !== previous) recipeChoices.value = {};
+}, { flush: "sync" });
 
 void load();
 void palData.load();
@@ -428,6 +450,58 @@ const intermediateRecipeChoiceIds = computed(() => {
     .localeCompare(itemName(itemById.value.get(right)), "zh-CN"));
 });
 
+const catalogRouteQuery = computed(() => snapshotQuery({
+  q: query.value || undefined,
+  category: category.value || undefined,
+  sort: itemSort.value === "default" ? undefined : itemSort.value,
+}));
+const validRecipeChoices = computed(() => Object.entries(recipeChoices.value)
+  .filter(([itemId, recipeId]) => {
+    const candidates = calculationRecipesByProduct.value.get(itemId) ?? [];
+    return reachableCalculationItems.value.has(itemId)
+      && candidates.length > 1
+      && candidates.some((recipe) => recipe.id === recipeId);
+  })
+  .sort(([left], [right]) => left.localeCompare(right, "en")));
+const calculatorRouteQuery = computed(() => snapshotQuery({
+  target: targetItemId.value || undefined,
+  qty: quantity.value === 1 ? undefined : String(quantity.value),
+  choice: encodeChoiceQuery(Object.fromEntries(validRecipeChoices.value)),
+}));
+
+watch([items, targetItemId], () => {
+  if (targetItemId.value && items.value.length
+    && !catalogItems.value.some((item) => item.id === targetItemId.value)) targetItemId.value = "";
+}, { immediate: true });
+
+watch([items, category], () => {
+  if (!items.value.length || !category.value) return;
+  if (!catalogItems.value.some((item) => item.typeA === category.value)) category.value = "";
+}, { immediate: true });
+
+watch([items, selectedItemId], () => {
+  if (!items.value.length || !selectedItemId.value
+    || catalogItems.value.some((item) => item.id === selectedItemId.value)) return;
+  void router.replace({ name: "items", query: catalogRouteQuery.value });
+}, { immediate: true });
+
+watch(validRecipeChoices, (valid) => {
+  if (!items.value.length) return;
+  const normalized = Object.fromEntries(valid);
+  if (JSON.stringify(normalized) !== JSON.stringify(recipeChoices.value)) recipeChoices.value = normalized;
+}, { deep: true, immediate: true });
+
+watch(
+  [mode, catalogRouteQuery, calculatorRouteQuery, selectedItemId, items],
+  () => {
+    if (applyingRoute || !items.value.length
+      || (route.name !== "items" && route.name !== "item-detail" && route.name !== "item-calculator")) return;
+    const nextQuery = mode.value === "calculator" ? calculatorRouteQuery.value : catalogRouteQuery.value;
+    if (!queriesEqual(route.query, nextQuery)) void router.replace({ query: nextQuery });
+  },
+  { deep: true, flush: "post", immediate: true },
+);
+
 function compareDefault(left: ItemRecord, right: ItemRecord) {
   return (left.sortId ?? Number.MAX_SAFE_INTEGER) - (right.sortId ?? Number.MAX_SAFE_INTEGER)
     || itemName(left).localeCompare(itemName(right), "zh-CN")
@@ -479,19 +553,21 @@ function recipeMeta(recipe: ItemRecipeRecord) {
 }
 
 function openDetails(item: ItemRecord) {
-  selectedItemId.value = item.id;
+  void router.push({ name: "item-detail", params: { itemId: item.id }, query: catalogRouteQuery.value });
 }
 
 function calculateItem(item: ItemRecord) {
-  pendingCalculatorItemId.value = item.id;
-  selectedItemId.value = "";
+  void router.push({ name: "item-calculator", query: snapshotQuery({ target: item.id }) });
 }
 
-function finishPendingCalculator() {
-  if (!pendingCalculatorItemId.value) return;
-  targetItemId.value = pendingCalculatorItemId.value;
-  pendingCalculatorItemId.value = "";
-  mode.value = "calculator";
+function closeDetails() {
+  if (route.name === "item-detail") void router.replace({ name: "items", query: catalogRouteQuery.value });
+}
+
+function setMode(next: string | number) {
+  if (next === mode.value) return;
+  if (next === "calculator") void router.push({ name: "item-calculator", query: calculatorRouteQuery.value });
+  else void router.push({ name: "items", query: catalogRouteQuery.value });
 }
 
 function setRecipeChoice(itemId: string, recipeId: string | null) {
@@ -505,15 +581,27 @@ function setRecipeChoice(itemId: string, recipeId: string | null) {
 
 <template>
   <main class="page-shell page-shell--items">
-    <PageIntro eyebrow="资料库" title="道具工坊" description="查询道具、递归总工作量与出售效率，或把目标数量展开成完整材料树。" />
+    <PageIntro eyebrow="资料库" title="道具工坊" description="查询道具、递归总工作量与出售效率，或把目标数量展开成完整材料树。">
+      <template #actions>
+        <ShareButton
+          :to="mode === 'calculator'
+            ? { name: 'item-calculator', query: calculatorRouteQuery }
+            : { name: 'items', query: catalogRouteQuery }"
+          :disabled="isLoading"
+          :title="mode === 'calculator' ? '分享材料计算' : '分享道具工坊'"
+          :text="mode === 'calculator' ? '查看这份帕鲁道具材料计算' : '查看这个帕鲁道具界面'"
+        />
+      </template>
+    </PageIntro>
     <DataState :is-loading :error loading-text="正在加载道具与配方数据…" @retry="load">
       <NTabs
-        v-model:value="mode"
+        :value="mode"
         class="segmented-control segmented-control--two items-mode-tabs"
         type="segment"
         aria-label="选择道具功能"
         :pane-wrapper-style="{ display: 'none' }"
         :tab-style="{ flex: '1 1 0', justifyContent: 'center', minWidth: 0 }"
+        @update:value="setMode"
       >
         <NTabPane name="catalog"><template #tab><span class="mode-tab"><strong>道具图鉴</strong><small>查参数与配方</small></span></template></NTabPane>
         <NTabPane name="calculator"><template #tab><span class="mode-tab"><strong>材料计算</strong><small>展开制作需求</small></span></template></NTabPane>
@@ -647,10 +735,23 @@ function setRecipeChoice(itemId: string, recipeId: string | null) {
       :show="Boolean(selectedItem)"
       placement="right"
       width="var(--item-drawer-width)"
-      @update:show="!$event && (selectedItemId = '')"
-      @after-leave="finishPendingCalculator"
+      @update:show="!$event && closeDetails()"
     >
-      <NDrawerContent :title="selectedItem ? `${itemName(selectedItem)} · 道具详情` : '道具详情'">
+      <NDrawerContent>
+        <template #header>
+          <div class="item-drawer__topbar">
+            <strong>{{ selectedItem ? `${itemName(selectedItem)} · 道具详情` : "道具详情" }}</strong>
+            <div v-if="selectedItem" class="item-drawer__actions">
+              <ShareButton
+                label="分享详情"
+                :to="{ name: 'item-detail', params: { itemId: selectedItem.id }, query: catalogRouteQuery }"
+                :title="`分享${itemName(selectedItem)}的道具详情`"
+                :text="`查看${itemName(selectedItem)}的道具资料`"
+              />
+              <NButton circle quaternary aria-label="关闭道具详情" @click="closeDetails">×</NButton>
+            </div>
+          </div>
+        </template>
         <div v-if="selectedItem" class="item-detail">
           <header class="item-detail__hero">
             <ItemIcon :item="selectedItem" size="large" />

@@ -1,18 +1,25 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { NEmpty, NInput, NSelect } from "naive-ui";
 import { pinyin } from "pinyin-pro";
+import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalIcon from "@/components/PalIcon.vue";
+import ShareButton from "@/components/ShareButton.vue";
 import type { PalRecord, PassiveSkillRecord } from "@/core";
+import {
+  isSnapshotQuery, queriesEqual, queryEnum, queryText, snapshotQuery,
+} from "@/routing/queryState";
 import { formatDex, usePalDataStore } from "@/stores/palData";
 
 type RandomPoolFilter = "all" | "included" | "excluded";
 type AcquisitionFilter = "all" | "surgery" | "item" | "none";
 
 const palData = usePalDataStore();
+const route = useRoute();
+const router = useRouter();
 const { passiveSkills, palById, isLoading, error } = storeToRefs(palData);
 const { load } = palData;
 
@@ -20,6 +27,68 @@ const query = ref("");
 const rank = ref<number | "all">("all");
 const randomPool = ref<RandomPoolFilter>("all");
 const acquisition = ref<AcquisitionFilter>("all");
+
+const validRanks = new Set(["5", "4", "3", "2", "1", "-1", "-2", "-3"] as const);
+const validPools = new Set<RandomPoolFilter>(["all", "included", "excluded"]);
+const validAcquisitions = new Set<AcquisitionFilter>(["all", "surgery", "item", "none"]);
+
+let routeHydrated = false;
+let applyingRoute = false;
+
+function resetFilters() {
+  query.value = "";
+  rank.value = "all";
+  randomPool.value = "all";
+  acquisition.value = "all";
+}
+
+function applyRoute(routeQuery: Readonly<Record<string, unknown>>) {
+  const nextQuery = queryText(routeQuery.q);
+  if (typeof nextQuery === "string") query.value = nextQuery.slice(0, 200);
+
+  const nextRank = queryEnum(routeQuery.rank, validRanks);
+  if (nextRank) rank.value = Number(nextRank);
+
+  const nextPool = queryEnum(routeQuery.pool, validPools);
+  if (nextPool) randomPool.value = nextPool;
+
+  const nextAcquisition = queryEnum(routeQuery.acquisition, validAcquisitions);
+  if (nextAcquisition) acquisition.value = nextAcquisition;
+}
+
+function currentRouteQuery() {
+  return snapshotQuery({
+    q: query.value || undefined,
+    rank: rank.value === "all" ? undefined : String(rank.value),
+    pool: randomPool.value === "all" ? undefined : randomPool.value,
+    acquisition: acquisition.value === "all" ? undefined : acquisition.value,
+  });
+}
+
+function syncRoute() {
+  if (!routeHydrated || applyingRoute || route.name !== "passives") return;
+  const nextQuery = currentRouteQuery();
+  if (!queriesEqual(route.query, nextQuery)) void router.replace({ path: route.path, query: nextQuery });
+}
+
+watch([() => route.name, () => route.query], ([routeName, routeQuery]) => {
+  if (routeName !== "passives") return;
+  if (isSnapshotQuery(routeQuery) && queriesEqual(route.query, currentRouteQuery())) {
+    routeHydrated = true;
+    return;
+  }
+  applyingRoute = true;
+  try {
+    if (isSnapshotQuery(routeQuery)) resetFilters();
+    applyRoute(routeQuery);
+  } finally {
+    applyingRoute = false;
+  }
+  routeHydrated = true;
+  syncRoute();
+}, { immediate: true });
+
+watch([query, rank, randomPool, acquisition], syncRoute, { flush: "sync" });
 
 const rankOptions = [
   { label: "全部等级", value: "all" },
@@ -100,7 +169,14 @@ function formatCost(value: number) {
       eyebrow="被动技能"
       title="词条图鉴"
       description="基于正式版 1.0 数据整理：系统内 1,905 条被动效果记录中，本页收录 115 条玩家可见的标准词条。"
-    />
+    >
+      <template #actions>
+        <ShareButton
+          :to="{ path: '/passives', query: currentRouteQuery() }"
+          title="词条图鉴 · 帕鲁孵化实验室"
+        />
+      </template>
+    </PageIntro>
     <DataState :is-loading :error @retry="load">
       <dl class="passive-summary" aria-label="词条数据概览">
         <div><dt>正式词条</dt><dd>{{ passiveSkills.length }}</dd></div>

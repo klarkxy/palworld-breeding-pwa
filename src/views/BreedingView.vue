@@ -2,7 +2,7 @@
 import { storeToRefs } from "pinia";
 import { NButton, NCheckbox, NEmpty, NTabPane, NTabs } from "naive-ui";
 import { computed, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { getChildren, getParentPairs } from "@/core";
 import type { PalId } from "@/core";
 import DataState from "@/components/DataState.vue";
@@ -10,11 +10,14 @@ import EggshellCard from "@/components/EggshellCard.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalChip from "@/components/PalChip.vue";
 import PalSelect from "@/components/PalSelect.vue";
+import ShareButton from "@/components/ShareButton.vue";
+import { isSnapshotQuery, queriesEqual, snapshotQuery } from "@/routing/queryState";
 import { useBreedingStore } from "@/stores/breeding";
 import { useCollectionStore } from "@/stores/collection";
 import { usePalDataStore } from "@/stores/palData";
 
 const route = useRoute();
+const router = useRouter();
 const palData = usePalDataStore();
 const collection = useCollectionStore();
 const breeding = useBreedingStore();
@@ -27,9 +30,44 @@ const modes = [
   { id: "pairs", label: "? ＋ ? ＝ B", help: "查看目标的全部父母组合" },
 ] as const;
 
-watch([() => route.query, () => visiblePals.value.length], ([query, palCount]) => {
-  if (palCount) breeding.applyRoute(query);
+let routeHydrated = false;
+let applyingRoute = false;
+
+function currentRouteQuery() {
+  return snapshotQuery({
+    mode: mode.value === "forward" ? undefined : mode.value,
+    a: parentA.value || undefined,
+    b: parentB.value || undefined,
+    target: target.value || undefined,
+    owned: ownedOnly.value ? "1" : undefined,
+  });
+}
+
+function syncRoute() {
+  if (!routeHydrated || applyingRoute || route.name !== "breeding") return;
+  const query = currentRouteQuery();
+  if (!queriesEqual(route.query, query)) void router.replace({ path: route.path, query });
+}
+
+watch([() => route.name, () => route.query, () => visiblePals.value.length], ([routeName, query, palCount]) => {
+  if (routeName !== "breeding" || !palCount) return;
+  breeding.sanitize(new Set(visiblePals.value.map((pal) => pal.id)));
+  if (isSnapshotQuery(query) && queriesEqual(query, currentRouteQuery())) {
+    routeHydrated = true;
+    return;
+  }
+  applyingRoute = true;
+  try {
+    if (isSnapshotQuery(query)) breeding.reset();
+    breeding.applyRoute(query);
+  } finally {
+    applyingRoute = false;
+  }
+  routeHydrated = true;
+  syncRoute();
 }, { immediate: true });
+
+watch([mode, parentA, parentB, target, ownedOnly], syncRoute, { flush: "sync" });
 
 interface Recipe {
   a: PalId;
@@ -72,7 +110,15 @@ function swapParents() {
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="育种台" title="配种计算" description="正向计算子代，或一次查看目标帕鲁的全部父母组合。" />
+    <PageIntro eyebrow="育种台" title="配种计算" description="正向计算子代，或一次查看目标帕鲁的全部父母组合。">
+      <template #actions>
+        <ShareButton
+          :to="{ path: '/breeding', query: currentRouteQuery() }"
+          :disabled="!visiblePals.length"
+          title="配种计算 · 帕鲁孵化实验室"
+        />
+      </template>
+    </PageIntro>
     <DataState :is-loading :error @retry="load">
       <NTabs v-model:value="mode" class="segmented-control" type="segment" aria-label="选择计算方式" :pane-wrapper-style="{ display: 'none' }" :tab-style="{ flex: '1 1 0', justifyContent: 'center', minWidth: 0 }">
         <NTabPane v-for="item in modes" :key="item.id" :name="item.id">

@@ -111,11 +111,7 @@ export const useCollectionStore = defineStore("collection", () => {
   }
 
   function applyRoute(routeQuery: Readonly<Record<string, unknown>>) {
-    if (!("q" in routeQuery) && !("view" in routeQuery)) return false;
-    if ("q" in routeQuery) {
-      const routeQueryValue = Array.isArray(routeQuery.q) ? routeQuery.q[0] : routeQuery.q;
-      if (typeof routeQueryValue === "string") query.value = routeQueryValue.slice(0, 200);
-    }
+    if (!("view" in routeQuery)) return false;
     if ("view" in routeQuery) {
       const routeViewValue = Array.isArray(routeQuery.view) ? routeQuery.view[0] : routeQuery.view;
       if (routeViewValue === "owned" || routeViewValue === "all") view.value = routeViewValue;

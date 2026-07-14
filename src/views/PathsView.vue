@@ -2,7 +2,7 @@
 import { storeToRefs } from "pinia";
 import { NButton, NEmpty, NSelect, NTabPane, NTabs } from "naive-ui";
 import { computed, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { findChains, planFromOwned } from "@/core";
 import type { BreedPlan } from "@/core";
 import BreedPlanCard from "@/components/BreedPlanCard.vue";
@@ -10,6 +10,8 @@ import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalSelect from "@/components/PalSelect.vue";
+import ShareButton from "@/components/ShareButton.vue";
+import { isSnapshotQuery, queriesEqual, snapshotQuery } from "@/routing/queryState";
 import { useCollectionStore } from "@/stores/collection";
 import { usePalDataStore } from "@/stores/palData";
 import { usePathsStore } from "@/stores/paths";
@@ -18,6 +20,7 @@ const palData = usePalDataStore();
 const collection = useCollectionStore();
 const paths = usePathsStore();
 const route = useRoute();
+const router = useRouter();
 const { visiblePals, palById, index, isLoading, error } = storeToRefs(palData);
 const { entries } = storeToRefs(collection);
 const { mode, start, target, maxDepth, lastRun } = storeToRefs(paths);
@@ -32,9 +35,44 @@ const emptyDescription = computed(() => lastRun.value?.mode === "owned" && !entr
   ? "先在图鉴中标记至少一种已拥有的帕鲁。"
   : "代数范围内没有路线，试试增加上限。");
 
-watch([() => route.query, () => visiblePals.value.length], ([query, palCount]) => {
-  if (palCount) paths.applyRoute(query);
+let routeHydrated = false;
+let applyingRoute = false;
+
+function currentRouteQuery() {
+  return snapshotQuery({
+    mode: mode.value === "single" ? undefined : mode.value,
+    start: start.value || undefined,
+    target: target.value || undefined,
+    depth: maxDepth.value === 5 ? undefined : String(maxDepth.value),
+    run: lastRun.value ? "1" : undefined,
+  });
+}
+
+function syncRoute() {
+  if (!routeHydrated || applyingRoute || route.name !== "paths") return;
+  const query = currentRouteQuery();
+  if (!queriesEqual(route.query, query)) void router.replace({ path: route.path, query });
+}
+
+watch([() => route.name, () => route.query, () => visiblePals.value.length], ([routeName, query, palCount]) => {
+  if (routeName !== "paths" || !palCount) return;
+  paths.sanitize(new Set(visiblePals.value.map((pal) => pal.id)));
+  if (isSnapshotQuery(query) && queriesEqual(query, currentRouteQuery())) {
+    routeHydrated = true;
+    return;
+  }
+  applyingRoute = true;
+  try {
+    if (isSnapshotQuery(query)) paths.reset();
+    paths.applyRoute(query);
+  } finally {
+    applyingRoute = false;
+  }
+  routeHydrated = true;
+  syncRoute();
 }, { immediate: true });
+
+watch([mode, start, target, maxDepth, lastRun], syncRoute, { deep: true, flush: "sync" });
 
 const plans = computed<BreedPlan[]>(() => {
   const run = lastRun.value;
@@ -47,7 +85,15 @@ const plans = computed<BreedPlan[]>(() => {
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="路线室" title="繁育路线" description="按最少繁育代数查路线；库存模式会把多条支线合成一棵完整繁育树。" />
+    <PageIntro eyebrow="路线室" title="繁育路线" description="按最少繁育代数查路线；库存模式会把多条支线合成一棵完整繁育树。">
+      <template #actions>
+        <ShareButton
+          :to="{ path: '/paths', query: currentRouteQuery() }"
+          :disabled="!visiblePals.length"
+          title="繁育路线 · 帕鲁孵化实验室"
+        />
+      </template>
+    </PageIntro>
     <DataState :is-loading :error @retry="load">
       <NTabs v-model:value="mode" class="segmented-control segmented-control--two" type="segment" aria-label="选择路径模式" :pane-wrapper-style="{ display: 'none' }" :tab-style="{ flex: '1 1 0', justifyContent: 'center', minWidth: 0 }">
         <NTabPane v-for="item in modes" :key="item.id" :name="item.id">

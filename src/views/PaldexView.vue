@@ -7,8 +7,10 @@ import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import PageIntro from "@/components/PageIntro.vue";
 import PalIcon from "@/components/PalIcon.vue";
+import ShareButton from "@/components/ShareButton.vue";
 import { elementIcon, elementName, formatDex, palMatchesSearch, workIcon, workName } from "@/composables/usePalData";
 import type { PalRecord } from "@/core";
+import { isSnapshotQuery, queriesEqual, snapshotQuery } from "@/routing/queryState";
 import { useCollectionStore } from "@/stores/collection";
 import { usePalDataStore } from "@/stores/palData";
 import { usePaldexStore } from "@/stores/paldex";
@@ -21,21 +23,83 @@ const collection = useCollectionStore();
 const paldex = usePaldexStore();
 const { visiblePals, partnerSkillById, selfBreedOnlyIds, isLoading, error } = storeToRefs(palData);
 const { entries, cleanedCount, view: ownership } = storeToRefs(collection);
-const { query, element, work, movement, sortKey } = storeToRefs(paldex);
+const { query, element, work, movement, sortKey, selectedStars } = storeToRefs(paldex);
 const { load } = palData;
 const { setOwned } = collection;
 const ownedIds = computed(() => new Set(entries.value.map((entry) => entry.palId)));
 
-watch([() => route.query, () => visiblePals.value.length], ([routeQuery, palCount]) => {
-  if (!palCount) return;
-  paldex.applyRoute(routeQuery);
-  collection.applyRoute(routeQuery);
-}, { immediate: true });
-watch([ownership, () => route.path, () => route.query.view, () => visiblePals.value.length], ([value, , , palCount]) => {
-  if (!palCount) return;
-  const routeView = Array.isArray(route.query.view) ? route.query.view[0] : route.query.view;
-  if (routeView !== value) void router.replace({ query: { ...route.query, view: value } });
-}, { flush: "post", immediate: true });
+const routePalId = computed(() => {
+  const value = route.params.id;
+  return typeof value === "string" ? value : value?.[0] ?? "";
+});
+
+let routeHydrated = false;
+let applyingRoute = false;
+
+function currentRouteQuery(includeStars = route.name === "paldex-detail") {
+  return snapshotQuery({
+    q: query.value || undefined,
+    element: element.value || undefined,
+    work: work.value || undefined,
+    movement: movement.value === "all" ? undefined : movement.value,
+    sort: sortKey.value === "dex" ? undefined : sortKey.value,
+    view: ownership.value === "all" ? undefined : ownership.value,
+    stars: includeStars && selectedStars.value === 4 ? "4" : undefined,
+  });
+}
+
+function syncRoute() {
+  if (!routeHydrated || applyingRoute
+    || (route.name !== "paldex" && route.name !== "paldex-detail")) return;
+  const nextQuery = currentRouteQuery();
+  if (!queriesEqual(route.query, nextQuery)) void router.replace({ query: nextQuery });
+}
+
+watch(
+  [() => route.name, () => route.query, () => visiblePals.value.length],
+  ([routeName, routeQuery]) => {
+    if (routeName !== "paldex" && routeName !== "paldex-detail") return;
+    const snapshot = isSnapshotQuery(routeQuery);
+    if (snapshot
+      && queriesEqual(routeQuery, currentRouteQuery(routeName === "paldex-detail"))
+      && (routeName === "paldex-detail" || selectedStars.value === 0)) {
+      routeHydrated = true;
+      return;
+    }
+    applyingRoute = true;
+    try {
+      if (snapshot) {
+        paldex.reset();
+        ownership.value = "all";
+      }
+      paldex.applyRoute(routeQuery);
+      if (snapshot && routeName !== "paldex-detail") selectedStars.value = 0;
+      collection.applyRoute(routeQuery);
+    } finally {
+      applyingRoute = false;
+    }
+    routeHydrated = true;
+    syncRoute();
+  },
+  { immediate: true, flush: "sync" },
+);
+
+watch(
+  [query, element, work, movement, sortKey, ownership, selectedStars],
+  syncRoute,
+  { flush: "sync" },
+);
+
+watch(
+  [() => route.name, routePalId, () => visiblePals.value.length],
+  ([routeName, palId, palCount]) => {
+    if (routeName !== "paldex-detail" || !palCount) return;
+    if (palId && visiblePals.value.some((pal) => pal.id === palId)) return;
+    void router.replace({ name: "paldex", query: currentRouteQuery(false) });
+  },
+  { immediate: true, flush: "post" },
+);
+
 interface SortOption extends SelectOption {
   value: SortKey;
   label: string;
@@ -175,15 +239,25 @@ async function toggleOwned(palId: string, wasOwned: boolean) {
 }
 
 async function closeDetail() {
-  const palId = String(router.currentRoute.value.params.id ?? "");
-  await router.replace({ path: "/paldex", query: { ...route.query, view: ownership.value } });
+  if (route.name !== "paldex-detail") return;
+  const palId = routePalId.value;
+  await router.replace({ name: "paldex", query: currentRouteQuery(false) });
   await focusPaldexCard(palId);
 }
 </script>
 
 <template>
   <main class="page-shell">
-    <PageIntro eyebrow="图鉴" title="帕鲁图鉴" description="筛选、排序，并直接标记已经拥有的帕鲁。" />
+    <PageIntro eyebrow="图鉴" title="帕鲁图鉴" description="筛选、排序，并直接标记已经拥有的帕鲁。">
+      <template #actions>
+        <ShareButton
+          :to="{ name: 'paldex', query: currentRouteQuery(false) }"
+          :disabled="!visiblePals.length"
+          title="帕鲁图鉴 · 帕鲁孵化实验室"
+          text="查看这份帕鲁图鉴筛选结果"
+        />
+      </template>
+    </PageIntro>
     <DataState :is-loading :error @retry="load">
       <p v-if="cleanedCount" class="notice">数据已升级，自动移除了 {{ cleanedCount }} 条失效记录。</p>
       <section class="filter-bar filter-bar--paldex" aria-label="筛选图鉴">
@@ -198,7 +272,7 @@ async function closeDetail() {
       <ul class="paldex-grid">
         <li v-for="pal in filteredPals" :key="pal.id" class="paldex-item" :class="{ 'paldex-item--owned': ownedIds.has(pal.id) }">
           <RouterLink
-            :to="{ path: `/paldex/${encodeURIComponent(pal.id)}`, query: { ...route.query, view: ownership } }"
+            :to="{ name: 'paldex-detail', params: { id: pal.id }, query: currentRouteQuery(true) }"
             class="paldex-card"
             :data-pal-id="pal.id"
             :aria-label="`${pal.names.zh} ${formatDex(pal)}${ownedIds.has(pal.id) ? '，已拥有' : ''}${selfBreedOnlyIds.has(pal.id) ? '，仅可同种自交' : ''}${mountTechnologyLabel(pal) ? `，${mountMovementTypeLabel(pal)}，${mountTechnologyLabel(pal)}` : ''}，打开详细图鉴`"
@@ -239,6 +313,6 @@ async function closeDetail() {
       </ul>
       <NEmpty v-if="!filteredPals.length" class="empty-state" description="没有匹配项。" />
     </DataState>
-    <RouterView v-slot="{ Component }"><component :is="Component" :key="route.fullPath" @close="closeDetail" /></RouterView>
+    <RouterView v-slot="{ Component }"><component :is="Component" :key="routePalId" @close="closeDetail" /></RouterView>
   </main>
 </template>
