@@ -13,6 +13,8 @@
 - 图鉴移动参数展示，以及按编号、基础数值、工作等级或指定移动参数排序
 - 主动技能属性、威力、冷却、学习等级与说明，以及伙伴技能的当前星级结构化参数
 - 独立的被动词条大全：中英文搜索、等级与获取方式筛选，并标明随机池权重、固定携带、词条手术和对应道具信息
+- 道具图鉴：简中/拼音/英文/内部 ID 搜索，显示分类、重量、基础出售价、制作配方和用途
+- 道具材料计算器：按目标数量递归展开完整合成树，合并共享中间材料，并汇总批次余量与基准工作量
 - 每只帕鲁的 0 星 / 4 星精炼切换：战斗倍率、工作等级、伙伴技能数值、牧场产出与滑翔参数
 - PWA 离线使用、移动端布局、GitHub Pages 部署
 
@@ -22,7 +24,7 @@
 
 路线方案树不会写入本地存储；页面恢复后会使用当前 1.0 配种规则与最新库存重新计算，避免数据升级后继续展示旧结果。如果浏览器拒绝本地存储访问，应用仍可在当前页面使用，并会明确提示本次更改无法保存。
 
-状态按职责拆分：`palDataStore` 只保存本次运行加载的图鉴、技能和配种索引，不持久化；`collectionStore`、`breedingStore`、`pathsStore`、`paldexStore` 分别使用 `pal-lab.collection.v1`、`pal-lab.breeding.v1`、`pal-lab.paths.v1`、`pal-lab.paldex.v1`。图鉴数据加载后会重新校验内部 ID、筛选枚举和路线深度；只移除失效项，收藏清理数量会显示在页面上。未来的道具图鉴会使用独立 Store 和存储键，不与帕鲁数据 schema 耦合。
+状态按职责拆分：`palDataStore` 和 `itemDataStore` 只保存本次运行加载的图鉴、技能、配种与道具索引，不持久化；`collectionStore`、`breedingStore`、`pathsStore`、`paldexStore` 分别使用 `pal-lab.collection.v1`、`pal-lab.breeding.v1`、`pal-lab.paths.v1`、`pal-lab.paldex.v1`。图鉴数据加载后会重新校验内部 ID、筛选枚举和路线深度；只移除失效项，收藏清理数量会显示在页面上。道具数据使用独立 Store，不与帕鲁数据 schema 耦合。
 
 收藏、计算器和路线界面不要求输入性别；库存规划默认玩家可在游戏内调整性别。原始配种规则中的特殊性别方向仍在算法内部保留，因此不会把两个不同子代错误合并。
 
@@ -30,7 +32,7 @@
 
 ## 数据来源
 
-当前静态快照对应游戏 `1.0`、数据版本 `palworld-1.0-palcalc-v23-skills2-movement1-refinement1`：306 条内部帕鲁记录（其中 288 条可选）、46,972 条原始配种规则（其中 41,550 条可用于可选帕鲁）、320 条主动技能、288 条简中伙伴技能文本、115 条正式玩家被动词条、306 条移动参数记录、288 条 0/4 星精炼记录、303 张游戏图标和 3 张隐藏记录占位图。288 条可选记录均有内部移动类型和精炼端点；9 条隐藏记录因没有对应 Blueprint 而缺少移动类型。精确上游版本、生成时间、数量和 SHA-256 校验值记录在 [`public/data/manifest.json`](./public/data/manifest.json)。
+当前静态快照对应游戏 `1.0`、数据版本 `palworld-1.0-palcalc-v23-skills2-movement1-refinement1-items1`：306 条内部帕鲁记录（其中 288 条可选）、46,972 条原始配种规则（其中 41,550 条可用于可选帕鲁）、320 条主动技能、288 条简中伙伴技能文本、115 条正式玩家被动词条、306 条移动参数记录、288 条 0/4 星精炼记录，以及 2,466 条内部道具记录（其中 1,891 条可在游戏中使用）和 1,414 条配方。288 条可选帕鲁均有内部移动类型和精炼端点；1,891 条可用道具均有中英名称和图标。精确来源、生成时间、数量和 SHA-256 校验值记录在 [`public/data/manifest.json`](./public/data/manifest.json)。
 
 | 本项目数据 | 直接来源与固定版本 | 使用方式 |
 |---|---|---|
@@ -41,11 +43,12 @@
 | 全部内部记录的伙伴技能日文标题回退 | [PalModding/UtililityFiles `DT_SkillNameText_Common.json`](https://github.com/PalModding/UtililityFiles/blob/455de2110d8414f703699204f33cb6ac052a3f98/Json%27s/DataTable/Text/DT_SkillNameText_Common.json)，commit [`455de21`](https://github.com/PalModding/UtililityFiles/commit/455de2110d8414f703699204f33cb6ac052a3f98)，blob `25a3f5510c4a1b0304d1e31bb172bae21ae2bcb7` | 为 306 条记录保留标题回退；正常图鉴中的 288 条可选记录优先显示上述简中文本。 |
 | 慢走、行走、奔跑、乘骑冲刺、搬运、游泳与游泳冲刺参数，内部移动类型及 Blueprint 飞行覆盖值 | 维护者本机合法安装的《幻兽帕鲁》Steam `1.0` build `24088745`，从 `Pal-Windows.pak` 的 `DT_PalMonsterParameter` 及角色 Blueprint 解包；使用 [CUE4Parse](https://github.com/FabianFG/CUE4Parse) `1.2.2.202607` 和 [PalModding/UtililityFiles](https://github.com/PalModding/UtililityFiles/commit/455de2110d8414f703699204f33cb6ac052a3f98) 同一固定 commit 的 `Mapping.usmap`（blob `4ae676dd2c13a3d74d32df5a89c6f437754ffcd6`，SHA-256 `741798898aabf3da8803e26ff005a35052b33bd0c90d771aabbb5f2c367f7df7`） | 原始导出物 SHA-256 为 `528b804632f0030186804cd9b1b3a3a89b75f046baa0c77e713d2e3e76009d16`；仓库只提交按当前 306 个内部 ID 归一化的 [`movement-v1.json`](./scripts/vendor/palworld/movement-v1.json)，生成时再写入图鉴数据。 |
 | 0 星/4 星伙伴技能、精炼倍率、工作适应性、牧场产出和滑翔参数 | 同一本机 Steam `1.0` build `24088745` 的 `BP_PalGameSetting`、`DT_PartnerSkillParameter`、`DT_PassiveSkill_Main(_Common)`、`DT_PalMonsterParameter_Common`、角色 Blueprint、`DT_ItemLotteryDataTable` 与 `BP_GliderComponent`；解包工具和 Mapping 版本同上 | 本机安装确认当前版本及两张被动表各有 1,905 个内部行；这些行包含大量伙伴技能参数、测试或内部记录，不能直接当作玩家词条。0 星对应内部 Rank 1 / 数组 index 0，4 星对应 Rank 5 / index 4。270 条直接由五阶伙伴技能表生成，18 条牧场、滑翔或固定 Blueprint 机制单独解析；归一化产物为 [`refinement-v1.json`](./scripts/vendor/palworld/refinement-v1.json)。所有原始产物 SHA-256 均写入 manifest。 |
+| 道具名称、说明、分类、重量、图标、配方、科技解锁、商店记录与基础出售价 | 同一本机 Steam `1.0` build `24088745` 的 `DT_ItemDataTable(_Common)`、`DA_StaticItemDataAsset`、`DT_ItemRecipeDataTable(_Common)`、`DT_TechnologyRecipeUnlock(_Common)`、`DT_ItemShopCreateData(_Common)`、本地化文本和图标资源；解包工具和 Mapping 版本同上 | 归一化产物为 [`items-v1.json`](./scripts/vendor/palworld/items-v1.json)，运行时拆分为 [`items.json`](./public/data/items.json) 与 [`recipes.json`](./public/data/recipes.json)。计算器按配方批次向上取整并递归展开材料；基准工作量为原始 `WorkAmount / 100`。基础出售价按当前设置 `SellItemRate = 0.1` 计算为 `floor(Price / 10)`，不含伙伴技能等额外修正。 |
 | 配种数据独立校验 | [pal-breeding-calculator `palworld-1.0.json`](https://github.com/ZiSangMuZhi/pal-breeding-calculator/blob/e0fca5b22c2a4905b725c2ed988e6ef7c1914b8c/src/data/palworld-1.0.json)，release `v1.0.0` / commit [`e0fca5b`](https://github.com/ZiSangMuZhi/pal-breeding-calculator/commit/e0fca5b22c2a4905b725c2ed988e6ef7c1914b8c)，blob `e629e284587c3e4f38d5efc834479c75307a5548` | 逐条核对 306 个身份和 46,972 条规则；不作为运行时数据源。 |
 | 帕鲁头像 | [PalCalc `PalCalc.UI/Resources/Pals`](https://github.com/tylercamp/palcalc/tree/b5e13e90fedc2e95d54fa223da77be464c313001/PalCalc.UI/Resources/Pals)，同一固定版本 | 303 张 100×100 PNG 按内部 ID 重命名；缺图的 3 条隐藏内部记录（`BlackFurDragon`、`POLICE_HawkBird`、`POLICE_ThunderDog`）由本项目生成 SVG 占位图，不会出现在图鉴选择器中。 |
 | 拼音首字母 | 帕鲁简中名称 + [`pinyin-pro` 3.28.1](https://www.npmjs.com/package/pinyin-pro/v/3.28.1) | 仅在浏览器中生成搜索索引，不修改静态帕鲁数据。 |
 
-四个发布数据文件均由 [`scripts/generate_data.py`](./scripts/generate_data.py) 从上述固定快照生成：[`breeding.json`](./public/data/breeding.json) 保存帕鲁记录和全部规则，[`paldex.json`](./public/data/paldex.json) 保存同一份帕鲁记录，[`skills.json`](./public/data/skills.json) 保存主动技能、伙伴技能和 115 条标准被动词条事实，[`manifest.json`](./public/data/manifest.json) 保存来源、数量与校验值。属性/工作类别的简中标签、`selectable` 标记、规则性别展开、固定携带者反向索引和 3 张占位图属于本项目的确定性派生结果；图鉴中的“已拥有”标记则完全来自用户在当前浏览器中的本地输入。
+六个发布数据文件由固定快照生成或校验：[`breeding.json`](./public/data/breeding.json) 保存帕鲁记录和全部规则，[`paldex.json`](./public/data/paldex.json) 保存同一份帕鲁记录，[`skills.json`](./public/data/skills.json) 保存技能与标准被动词条事实，[`items.json`](./public/data/items.json) 保存道具事实，[`recipes.json`](./public/data/recipes.json) 保存完整配方关系，[`manifest.json`](./public/data/manifest.json) 保存来源、数量与校验值。属性/工作类别的简中标签、`selectable` 标记、规则性别展开、固定携带者反向索引和占位图属于本项目的确定性派生结果；图鉴中的“已拥有”标记则完全来自用户在当前浏览器中的本地输入。
 
 移动速度字段是游戏配置参数，不等同于实测移动速度；负数是“不可用”哨兵，不是有效速度。内部移动类型描述角色移动组件，不代表该帕鲁可以乘骑。仅 6 条记录存在有效 Blueprint 飞行速度覆盖值；该覆盖值与基础速度分开保留，也不能当作所有飞行帕鲁统一的最终飞行速度。
 
@@ -80,6 +83,7 @@ node scripts/fetch-paldb-partner-skills.mjs
 node scripts/import-refinement-snapshot.mjs <path-to-local-unpack-directory>
 python scripts/generate_data.py
 pnpm run validate:data
+pnpm run validate:items
 ```
 
 应用图标由仓库内的 SVG 机械渲染为浏览器兼容的 PNG：`node scripts/render-app-icons.mjs`。

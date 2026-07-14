@@ -1,6 +1,6 @@
 # Third-party notices
 
-This application is unofficial and is not affiliated with Pocketpair. Palworld names, terminology, gameplay data, icons, and related intellectual property belong to Pocketpair. The repository contains 303 game-derived 100×100 PNG icons pinned from PalCalc v1.17.2. Three non-selectable internal records absent from PalCalc's icon set use generated local SVG placeholders and are never shown in the user-facing Paldex.
+This application is unofficial and is not affiliated with Pocketpair. Palworld names, terminology, gameplay data, icons, and related intellectual property belong to Pocketpair. The repository contains 303 game-derived 100×100 Pal icons pinned from PalCalc v1.17.2 and 929 deduplicated item icons extracted from the installed game. Three non-selectable internal Pal records absent from PalCalc's icon set use generated local SVG placeholders and are never shown in the user-facing Paldex.
 
 The project's original code is licensed under the Star And Thank Author License (SATA), Version 2.0. That license does not relicense any third-party data or game-related rights listed below.
 
@@ -60,6 +60,14 @@ The project's original code is licensed under the Star And Thank Author License 
 - Semantics: Rank 1/index 0 is 0 stars and Rank 5/index 4 is 4 stars. Numeric fields without a proven unit are retained as internal values. The detailed first-three-star work allocation is a deterministic inference from the official 1.0 rule and current runtime endpoint checks; it is identified as such in the README and UI.
 - External interpretation checks: Pocketpair's [official 1.0 changelog](https://store.steampowered.com/news/app/1623730/view/686383649529010623) documents the work-rank overhaul; a [current runtime report](https://www.reddit.com/r/Palworld/comments/1utxoe6/psa_understanding_why_your_anubis_is_crafting_so/) was used to cross-check representative final levels.
 - Rights: these normalized facts, game text, item names, and terminology remain subject to Pocketpair's applicable rights and are excluded from this project's SATA license.
+
+## Locally extracted Palworld item and recipe snapshot
+
+- Source: the same legally installed local Steam copy of Palworld `1.0`, build `24088745`; item, recipe, technology-unlock, shop, localized-text, game-setting, and item-icon assets from `Pal-Windows.pak`.
+- Checked-in normalized snapshot: `scripts/vendor/palworld/items-v1.json`, containing 2,466 internal item rows, 1,414 recipe rows, source hashes, and reference diagnostics. The user-facing catalog contains the 1,891 rows marked legal in the game.
+- Derived values: normalized recipe work is the source `WorkAmount / 100`; base sale value is `floor(Price / 10)` from the extracted `SellItemRate = 0.1`, before partner-skill or other runtime modifiers.
+- Icons: 929 shared WebP files are referenced by the normalized rows; shared textures are stored once. These game-derived images are excluded from this project's SATA license.
+- Rights: the normalized facts, localized game text, terminology, and item images remain subject to Pocketpair's applicable rights and are excluded from this project's SATA license.
 
 ## CUE4Parse
 

@@ -1,0 +1,30 @@
+{
+  "Rows": {
+    "Recipe_Ingot": {
+      "Product_Id": "Ingot",
+      "Product_Count": 1,
+      "WorkAmount": 200,
+      "WorkableAttribute": "EPalWorkSuitability::Handcraft",
+      "Material1_Id": "Ore",
+      "Material1_Count": 2,
+      "Material2_Id": "None",
+      "Material2_Count": 1
+    },
+    "Recipe_Nail_A": {
+      "Product_Id": "Nail",
+      "Product_Count": 2,
+      "WorkAmount": 40,
+      "Material1_Id": "Ingot",
+      "Material1_Count": 1
+    },
+    "Recipe_Nail_B": {
+      "Product_Id": "Nail",
+      "Product_Count": 4,
+      "WorkAmount": 60,
+      "Materials": [
+        { "ItemId": "Scrap", "Count": 1 },
+        { "ItemId": "wood", "Count": 1 }
+      ]
+    }
+  }
+}

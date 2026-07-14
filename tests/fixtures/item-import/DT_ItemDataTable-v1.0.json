@@ -1,0 +1,53 @@
+[
+  {
+    "Type": "DataTable",
+    "Rows": {
+      "Ore": {
+        "OverrideNameMsgID": "ITEM_NAME_Ore",
+        "OverrideDescMsgID": "ITEM_DESC_Ore",
+        "IconName": "OreShared",
+        "TypeA": "EPalItemTypeA::Material",
+        "TypeB": "EPalItemTypeB::Ore",
+        "Rank": 1,
+        "Rarity": "EPalRarityType::Common",
+        "Price": 1001,
+        "MaxStackCount": 9999,
+        "Weight": 1,
+        "SortID": 10,
+        "bLegalInGame": true
+      },
+      "Ingot": {
+        "OverrideNameMsgID": "ITEM_NAME_Ingot",
+        "TypeA": "EPalItemTypeA::Material",
+        "Price": 2000,
+        "MaxStackCount": 9999,
+        "Weight": 2,
+        "SortID": 20
+      },
+      "Scrap": {
+        "OverrideNameMsgID": "ITEM_NAME_Scrap",
+        "TypeA": "EPalItemTypeA::Material",
+        "Price": 100,
+        "MaxStackCount": 9999,
+        "Weight": 0.2,
+        "SortID": 30
+      },
+      "Nail": {
+        "OverrideNameMsgID": "ITEM_NAME_Nail",
+        "TypeA": "EPalItemTypeA::Material",
+        "Price": 50,
+        "MaxStackCount": 9999,
+        "Weight": 0.1,
+        "SortID": 40
+      },
+      "Wood": {
+        "OverrideNameMsgID": "ITEM_NAME_Wood",
+        "TypeA": "EPalItemTypeA::Material",
+        "Price": 100,
+        "MaxStackCount": 9999,
+        "Weight": 1,
+        "SortID": 50
+      }
+    }
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "Properties": {
+    "Rows": {
+      "Merchant_Materials": {
+        "CurrencyType": "EPalShopCurrencyType::Money",
+        "ProductDataArray": [
+          {
+            "StaticItemId": { "StaticId": "Ingot" },
+            "OverridePrice": 500,
+            "BuyRate": 1,
+            "SellRate": 0.1,
+            "StockNum": 10
+          }
+        ]
+      }
+    }
+  }
+}

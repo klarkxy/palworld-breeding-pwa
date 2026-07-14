@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { access, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { validatePublicItemData } from "./import-item-snapshot.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const dataDir = resolve(root, "public/data");
@@ -12,8 +13,9 @@ const digestText = (contents) => createHash("sha256")
 const digest = async (name) => digestText(await readFile(resolve(dataDir, name)));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 
-const [manifest, breeding, paldex, skills] = await Promise.all([
+const [manifest, breeding, paldex, skills, itemDocument, recipeDocument] = await Promise.all([
   readJson("manifest.json"), readJson("breeding.json"), readJson("paldex.json"), readJson("skills.json"),
+  readJson("items.json"), readJson("recipes.json"),
 ]);
 const pals = paldex.pals;
 const rules = breeding.rules;
@@ -208,11 +210,92 @@ assert(manifest.counts.refinementRecords === 288, "Unexpected refinement-record 
 assert(manifest.counts.rankedPartnerSkillRecords === 270, "Unexpected ranked partner-skill count");
 assert(manifest.counts.changedPartnerSkillRecords === 258, "Unexpected changed partner-skill count");
 assert(manifest.counts.specialRefinementRecords === 18, "Unexpected special refinement count");
+const itemValidation = validatePublicItemData(itemDocument, recipeDocument);
+const items = itemDocument.items;
+const itemRecipes = recipeDocument.recipes;
+assert(itemValidation.items === 2_466 && itemValidation.recipes === 1_414,
+  "Unexpected public item-data counts");
+const legalItems = items.filter((item) => item.flags?.legalInGame === true);
+assert(legalItems.length === 1_891, `Expected 1891 legal items, got ${legalItems.length}`);
+assert(legalItems.every((item) => item.names?.zh && item.names?.en), "Legal item name coverage changed");
+assert(legalItems.every((item) => item.icon), "Legal item icon coverage changed");
+assert(items.every((item) => item.priceRaw < 0
+  || item.baseSellPrice === Math.floor(item.priceRaw / 10)), "Base item sale-price derivation changed");
+assert(itemDocument.counts.localizedNames.zh === 2_438
+  && itemDocument.counts.localizedNames.en === 2_438, "Item localization coverage changed");
+assert(itemDocument.counts.icons === 2_456, "Item icon-record coverage changed");
+assert(itemDocument.counts.shopOffers === 587, "Item shop-offer count changed");
+assert(recipeDocument.counts.products === 1_399, "Item recipe-product count changed");
+assert(recipeDocument.counts.alternateRecipeProducts === 4, "Alternate item-recipe count changed");
+assert(recipeDocument.counts.technologyUnlocks === 383, "Technology item-unlock count changed");
+assert(recipeDocument.counts.cycles === 2 && recipeDocument.cycles.length === 2,
+  "Item recipe-cycle count changed");
+assert(recipeDocument.counts.unresolvedItemRefs === 0
+  && recipeDocument.counts.unresolvedTechnologyRecipeRefs === 0
+  && itemDocument.counts.unresolvedShopItemRefs === 0, "Unresolved item-data references remain");
+
+const itemSnapshotPath = resolve(root, "scripts/vendor/palworld/items-v1.json");
+const itemSnapshotBytes = await readFile(itemSnapshotPath);
+const itemSnapshot = JSON.parse(itemSnapshotBytes.toString("utf8"));
+assert(JSON.stringify(itemDocument.source) === JSON.stringify(itemSnapshot.source),
+  "Public item source metadata differs from normalized snapshot");
+assert(JSON.stringify(recipeDocument.source) === JSON.stringify(itemSnapshot.source),
+  "Public recipe source metadata differs from normalized snapshot");
+assert(JSON.stringify(items) === JSON.stringify(itemSnapshot.items), "Public items differ from normalized snapshot");
+assert(JSON.stringify(itemRecipes) === JSON.stringify(itemSnapshot.recipes),
+  "Public recipes differ from normalized snapshot");
+assert(JSON.stringify(recipeDocument.recipesByProduct) === JSON.stringify(itemSnapshot.recipesByProduct),
+  "Public recipe index differs from normalized snapshot");
+assert(JSON.stringify(recipeDocument.cycles) === JSON.stringify(itemSnapshot.cycles),
+  "Public recipe cycles differ from normalized snapshot");
+assert(itemSnapshot.counts.canonicalizedReferences === 10
+  && itemSnapshot.diagnostics.referenceCorrections.length === 10,
+"Item FName reference-correction count changed");
+assert(itemSnapshot.counts.unresolvedItemRefs === 0
+  && itemSnapshot.counts.unresolvedTechnologyRecipeRefs === 0
+  && itemSnapshot.counts.unresolvedShopItemRefs === 0, "Normalized item snapshot has unresolved references");
+const { snapshotSha256: manifestItemSnapshotHash, ...manifestItemSource } = manifest.sources.localGameItems;
+assert(JSON.stringify(manifestItemSource) === JSON.stringify(itemSnapshot.source),
+  "Manifest item source metadata differs from snapshot");
+assert(manifestItemSnapshotHash === digestText(itemSnapshotBytes), "Item snapshot hash mismatch");
+
+const itemIconNames = [...new Set(items.filter((item) => item.icon).map((item) => basename(item.icon)))].sort();
+const actualItemIconNames = (await readdir(resolve(root, "public/item-icons"), { withFileTypes: true }))
+  .filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
+assert(itemIconNames.length === 929, `Expected 929 item icon files, got ${itemIconNames.length}`);
+assert(JSON.stringify(actualItemIconNames) === JSON.stringify(itemIconNames),
+  "Item icon directory contains missing or stale files");
+const itemIconHash = createHash("sha256");
+for (const name of itemIconNames) {
+  itemIconHash.update(name);
+  itemIconHash.update("\0");
+  itemIconHash.update(await readFile(resolve(root, "public/item-icons", name)));
+}
+assert(manifest.counts.items === items.length && manifest.counts.legalItems === legalItems.length,
+  "Manifest item count mismatch");
+assert(manifest.counts.itemRecipes === itemRecipes.length
+  && manifest.counts.itemRecipeProducts === 1_399
+  && manifest.counts.alternateItemRecipeProducts === 4, "Manifest item recipe counts mismatch");
+assert(manifest.counts.itemTechnologyUnlocks === 383 && manifest.counts.itemShopOffers === 587,
+  "Manifest item source counts mismatch");
+assert(JSON.stringify(manifest.counts.itemLocalizedNames) === JSON.stringify({ zh: 2_438, en: 2_438, ja: 0 }),
+  "Manifest item localization counts mismatch");
+assert(manifest.counts.itemIconRecords === 2_456 && manifest.counts.itemIconFiles === 929,
+  "Manifest item icon counts mismatch");
+assert(manifest.counts.itemCycles === 2 && manifest.counts.itemCanonicalizedReferences === 10,
+  "Manifest item graph counts mismatch");
+assert(manifest.counts.unresolvedItemRefs === 0
+  && manifest.counts.unresolvedTechnologyRecipeRefs === 0
+  && manifest.counts.unresolvedShopItemRefs === 0, "Manifest unresolved item counts changed");
 assert(manifest.checksums.breeding === await digest("breeding.json"), "Breeding checksum mismatch");
 assert(manifest.checksums.paldex === await digest("paldex.json"), "Paldex checksum mismatch");
 assert(manifest.checksums.skills === await digest("skills.json"), "Skills checksum mismatch");
+assert(manifest.checksums.items === await digest("items.json"), "Items checksum mismatch");
+assert(manifest.checksums.recipes === await digest("recipes.json"), "Recipes checksum mismatch");
 assert(manifest.checksums.icons === iconHash.digest("hex"), "Icon bundle checksum mismatch");
-assert(manifest.dataVersion.endsWith("-skills2-movement1-refinement1"), `Unexpected data version: ${manifest.dataVersion}`);
+assert(manifest.checksums.itemIcons === itemIconHash.digest("hex"), "Item icon bundle checksum mismatch");
+assert(manifest.dataVersion.endsWith("-skills2-movement1-refinement1-items1"),
+  `Unexpected data version: ${manifest.dataVersion}`);
 for (const [name, file] of [["activeSkillOverrides", "active-skill-overrides.zh-Hans.json"], ["partnerSkills", "partner-skills.zh-Hans.json"]]) {
   const path = resolve(root, "scripts/vendor/paldb", file);
   const snapshot = JSON.parse(await readFile(path, "utf8"));
@@ -286,4 +369,4 @@ assert(manifest.sources.localGameRefinement.snapshotSha256
 assert(manifest.sources.localGameRefinement.rawArtifactSha256.special
   === "ca856bba482d8c2988d17dccde30880f49d0e4336e0260f68cd3e908febd3ae5",
 "Special refinement source hash mismatch");
-console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, ${passiveSkills.length} passive skills, and ${manifest.counts.icons} icons.`);
+console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, ${passiveSkills.length} passive skills, ${items.length} items, ${itemRecipes.length} item recipes, ${manifest.counts.icons} Pal icons, and ${itemIconNames.length} item icon files.`);

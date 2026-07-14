@@ -503,6 +503,61 @@ test("图鉴已拥有标记在同源页面间实时同步", async ({ page, conte
   await second.close();
 });
 
+test("道具图鉴与材料计算器展开蛋糕的完整真实配方", async ({ page }) => {
+  test.setTimeout(90_000);
+  await openApp(page, "/items");
+  await expect(page.getByRole("heading", { name: "道具工坊", level: 1 })).toBeVisible();
+
+  await page.getByLabel("搜索道具").fill("蛋糕");
+  const cakeCard = page.getByRole("button", { name: "查看蛋糕详情", exact: true });
+  await expect(cakeCard).toBeVisible();
+  await expect(cakeCard).toContainText(/蛋糕[\s\S]*Cake[\s\S]*1 个配方[\s\S]*630/);
+  await cakeCard.click();
+
+  const drawer = page.locator(".item-drawer");
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toContainText("蛋糕 · 道具详情");
+  await expect(drawer.locator(".item-detail__stats > div").filter({ hasText: "基础出售价" }))
+    .toHaveText(/基础出售价\s*630/);
+  const cakeRecipe = drawer.locator(".item-recipe-card");
+  await expect(cakeRecipe).toHaveCount(1);
+  await expect(cakeRecipe).toContainText(/Cake[\s\S]*产出 1[\s\S]*基准工作量 2,000/);
+  await expect(cakeRecipe).toContainText(
+    /面粉 × 5[\s\S]*红色野莓 × 8[\s\S]*牛奶 × 7[\s\S]*蛋 × 8[\s\S]*蜂蜜 × 2/,
+  );
+
+  await drawer.getByRole("button", { name: "计算此道具" }).click();
+  await expect(page.locator(".item-calculator")).toBeVisible();
+  const quantity = page.getByRole("textbox", { name: /目标数量/ });
+  await quantity.fill("2");
+  await quantity.press("Tab");
+  await expect(page).toHaveURL(/#\/items\?mode=calculator&target=Cake&qty=2$/);
+
+  const summary = page.locator(".item-plan-summary");
+  await expect(summary).toContainText(/目标\s*蛋糕 × 2/);
+  await expect(summary).toContainText(/实际产出\s*2/);
+  await expect(summary).toContainText(/制作步骤\s*2/);
+  await expect(summary).toContainText(/总基准工作量\s*4,100/);
+  await expect(summary).toContainText(/目标售价合计\s*1,260/);
+
+  const materials = page.locator(".item-material-list li");
+  await expect(materials).toHaveCount(5);
+  for (const [name, amount] of [
+    ["小麦", 30], ["红色野莓", 16], ["牛奶", 14], ["蛋", 16], ["蜂蜜", 4],
+  ] as const) {
+    const row = materials.filter({ hasText: new RegExp(`${escapeRegExp(name)}[\\s\\S]*×\\s*${amount}`) });
+    await expect(row).toHaveCount(1);
+  }
+
+  const steps = page.locator(".item-step-list li");
+  await expect(steps).toHaveCount(2);
+  await expect(steps.nth(0)).toContainText(/面粉 × 10[\s\S]*10 批 · 需要 10 · 余 0[\s\S]*小麦 × 30/);
+  await expect(steps.nth(1)).toContainText(/蛋糕 × 2[\s\S]*2 批 · 需要 2 · 余 0/);
+  await expect(steps.nth(1)).toContainText(
+    /红色野莓 × 16[\s\S]*蛋 × 16[\s\S]*面粉 × 10[\s\S]*蜂蜜 × 4[\s\S]*牛奶 × 14/,
+  );
+});
+
 test("词条图鉴收录正式词条并支持检索筛选与固定携带跳转", async ({ page }) => {
   await openApp(page, "/passives");
   await expect(page.getByRole("heading", { name: "词条图鉴", level: 1 })).toBeVisible();
@@ -553,7 +608,7 @@ test("词条图鉴收录正式词条并支持检索筛选与固定携带跳转",
 
 test("核心页面无严重无障碍问题", async ({ page }) => {
   test.setTimeout(150_000);
-  for (const route of ["/breeding", "/paths", "/paldex", "/paldex/OniGhostGirl", "/passives"]) {
+  for (const route of ["/breeding", "/paths", "/paldex", "/paldex/OniGhostGirl", "/passives", "/items"]) {
     await openApp(page, route);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     if (route === "/breeding") await page.getByRole("combobox", { name: "亲本 A", exact: true }).focus();
@@ -592,4 +647,13 @@ test("@subpath 安装后断网仍能打开计算器和本地数据", async ({ pa
   await page.getByLabel("搜索词条").fill("CraftSpeed_up3");
   await expect(page.locator(".passive-card")).toHaveCount(1);
   await expect(page.locator(".passive-card")).toContainText("卓绝技艺");
+  await page.getByRole("link", { name: "道具", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "道具工坊" })).toBeVisible();
+  await expect(page.locator(".item-summary")).toContainText(/收录道具\s*1891/);
+  await page.getByLabel("搜索道具").fill("蛋糕");
+  const offlineCake = page.getByRole("button", { name: "查看蛋糕详情", exact: true });
+  await expect(offlineCake).toBeVisible();
+  await expect(offlineCake.locator("img")).toBeVisible();
+  await offlineCake.click();
+  await expect(page.locator(".item-drawer")).toContainText(/基础出售价\s*630/);
 });

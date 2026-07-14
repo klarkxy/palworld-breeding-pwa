@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ROOT / "scripts" / "vendor"
 DATA = ROOT / "public" / "data"
 ICONS = ROOT / "public" / "icons"
+ITEM_ICONS = ROOT / "public" / "item-icons"
 EXPECTED_PALS = 306
 EXPECTED_RULES = 46_972
 EXPECTED_ACTIVE_SKILLS = 320
@@ -29,6 +30,18 @@ EXPECTED_GUARANTEED_PASSIVE_SKILLS = 23
 EXPECTED_GUARANTEED_PASSIVE_ASSIGNMENTS = 53
 EXPECTED_REFINEMENT_TABLE_RANKED = 270
 EXPECTED_REFINEMENT_TABLE_CHANGED = 258
+EXPECTED_ITEMS = 2_466
+EXPECTED_LEGAL_ITEMS = 1_891
+EXPECTED_ITEM_RECIPES = 1_414
+EXPECTED_ITEM_RECIPE_PRODUCTS = 1_399
+EXPECTED_ALTERNATE_ITEM_RECIPE_PRODUCTS = 4
+EXPECTED_ITEM_TECHNOLOGY_UNLOCKS = 383
+EXPECTED_ITEM_SHOP_OFFERS = 587
+EXPECTED_ITEM_LOCALIZED_NAMES = 2_438
+EXPECTED_ITEM_ICON_RECORDS = 2_456
+EXPECTED_ITEM_ICON_FILES = 929
+EXPECTED_ITEM_CYCLES = 2
+EXPECTED_ITEM_REFERENCE_CORRECTIONS = 10
 EXPECTED_SAVEPAL_GAP = {"DarkMutant"}
 MOVEMENT_FIELDS = (
     "slowWalkSpeed",
@@ -111,6 +124,105 @@ def icon_bundle_sha256(pals: list[dict[str, Any]]) -> str:
         digest.update(b"\0")
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def item_icon_bundle_sha256(items: list[dict[str, Any]]) -> tuple[int, str]:
+    referenced = sorted({Path(item["icon"]).name for item in items if item.get("icon")})
+    actual = sorted(path.name for path in ITEM_ICONS.iterdir() if path.is_file())
+    assert actual == referenced, "Item icon directory differs from normalized item references"
+    digest = hashlib.sha256()
+    for name in referenced:
+        path = ITEM_ICONS / name
+        digest.update(name.encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+    return len(referenced), digest.hexdigest()
+
+
+def build_item_documents(
+    snapshot: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], int, str]:
+    assert snapshot["schemaVersion"] == 1
+    assert snapshot["source"]["gameVersion"] == "1.0"
+    assert snapshot["source"]["gameBuildId"] == "24088745"
+    counts = snapshot["counts"]
+    expected_counts = {
+        "items": EXPECTED_ITEMS,
+        "recipes": EXPECTED_ITEM_RECIPES,
+        "recipeProducts": EXPECTED_ITEM_RECIPE_PRODUCTS,
+        "alternateRecipeProducts": EXPECTED_ALTERNATE_ITEM_RECIPE_PRODUCTS,
+        "technologyUnlocks": EXPECTED_ITEM_TECHNOLOGY_UNLOCKS,
+        "shopOffers": EXPECTED_ITEM_SHOP_OFFERS,
+        "icons": EXPECTED_ITEM_ICON_RECORDS,
+        "cycles": EXPECTED_ITEM_CYCLES,
+        "canonicalizedReferences": EXPECTED_ITEM_REFERENCE_CORRECTIONS,
+    }
+    for key, expected in expected_counts.items():
+        assert counts[key] == expected, f"Unexpected item snapshot count {key}"
+    assert counts["localizedNames"] == {
+        "zh": EXPECTED_ITEM_LOCALIZED_NAMES,
+        "en": EXPECTED_ITEM_LOCALIZED_NAMES,
+        "ja": 0,
+    }
+    assert counts["unresolvedItemRefs"] == 0
+    assert counts["unresolvedTechnologyRecipeRefs"] == 0
+    assert counts["unresolvedShopItemRefs"] == 0
+    assert snapshot["diagnostics"]["unresolvedItemRefs"] == []
+    assert snapshot["diagnostics"]["unresolvedTechnologyRecipeRefs"] == []
+    assert snapshot["diagnostics"]["unresolvedShopItemRefs"] == []
+    assert len(snapshot["diagnostics"]["referenceCorrections"]) == EXPECTED_ITEM_REFERENCE_CORRECTIONS
+
+    items = snapshot["items"]
+    recipes = snapshot["recipes"]
+    assert len(items) == EXPECTED_ITEMS
+    assert len({item["id"] for item in items}) == len(items)
+    assert len(recipes) == EXPECTED_ITEM_RECIPES
+    assert len({recipe["id"] for recipe in recipes}) == len(recipes)
+    legal_items = [item for item in items if item.get("flags", {}).get("legalInGame") is True]
+    assert len(legal_items) == EXPECTED_LEGAL_ITEMS
+    assert all(item["names"].get("zh") and item["names"].get("en") for item in legal_items)
+    assert all(item.get("icon") for item in legal_items)
+    assert all(
+        item.get("baseSellPrice") == item["priceRaw"] // 10
+        for item in items
+        if item.get("priceRaw", -1) >= 0
+    )
+    item_icon_files, item_icon_hash = item_icon_bundle_sha256(items)
+    assert item_icon_files == EXPECTED_ITEM_ICON_FILES
+
+    common = {
+        "schemaVersion": snapshot["schemaVersion"],
+        "gameVersion": snapshot["source"]["gameVersion"],
+        "gameBuildId": snapshot["source"]["gameBuildId"],
+        "source": snapshot["source"],
+    }
+    items_document = {
+        **common,
+        "counts": {
+            "items": counts["items"],
+            "localizedNames": counts["localizedNames"],
+            "icons": counts["icons"],
+            "shopOffers": counts["shopOffers"],
+            "unresolvedShopItemRefs": counts["unresolvedShopItemRefs"],
+        },
+        "items": items,
+    }
+    recipes_document = {
+        **common,
+        "counts": {
+            "recipes": counts["recipes"],
+            "products": counts["recipeProducts"],
+            "alternateRecipeProducts": counts["alternateRecipeProducts"],
+            "technologyUnlocks": counts["technologyUnlocks"],
+            "cycles": counts["cycles"],
+            "unresolvedItemRefs": counts["unresolvedItemRefs"],
+            "unresolvedTechnologyRecipeRefs": counts["unresolvedTechnologyRecipeRefs"],
+        },
+        "recipes": recipes,
+        "recipesByProduct": snapshot["recipesByProduct"],
+        "cycles": snapshot["cycles"],
+    }
+    return items_document, recipes_document, item_icon_files, item_icon_hash
 
 
 def validate_sources(
@@ -523,6 +635,11 @@ def main() -> None:
     movement_source = read_json(movement_path)
     refinement_path = VENDOR / "palworld" / "refinement-v1.json"
     refinement_source = read_json(refinement_path)
+    items_path = VENDOR / "palworld" / "items-v1.json"
+    items_source = read_json(items_path)
+    items_document, recipes_document, item_icon_files, item_icon_hash = build_item_documents(
+        items_source
+    )
     validate_sources(db, breeding_source, compact, movement_source)
 
     pals_by_key = {pal_key(pal["Id"]): pal["InternalName"] for pal in db["Pals"]}
@@ -555,6 +672,8 @@ def main() -> None:
     breeding_bytes = json_bytes(breeding)
     paldex_bytes = json_bytes(paldex)
     skills_bytes = json_bytes(skills)
+    items_bytes = json_bytes(items_document)
+    recipes_bytes = json_bytes(recipes_document)
     active_overrides_source = read_json(
         VENDOR / "paldb" / "active-skill-overrides.zh-Hans.json"
     )
@@ -573,6 +692,8 @@ def main() -> None:
     (DATA / "breeding.json").write_bytes(breeding_bytes)
     (DATA / "paldex.json").write_bytes(paldex_bytes)
     (DATA / "skills.json").write_bytes(skills_bytes)
+    (DATA / "items.json").write_bytes(items_bytes)
+    (DATA / "recipes.json").write_bytes(recipes_bytes)
     for pal in pals:
         svg_path = ICONS / f"{pal['id']}.svg"
         if (ICONS / f"{pal['id']}.png").exists():
@@ -582,7 +703,7 @@ def main() -> None:
 
     manifest = {
         "gameVersion": "1.0",
-        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}-skills2-movement1-refinement1",
+        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}-skills2-movement1-refinement1-items1",
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "sources": {
             "palcalc": {
@@ -618,6 +739,10 @@ def main() -> None:
             "localGameRefinement": {
                 **refinement_source["source"],
                 "snapshotSha256": text_file_sha256(refinement_path),
+            },
+            "localGameItems": {
+                **items_source["source"],
+                "snapshotSha256": text_file_sha256(items_path),
             },
             "paldb": {
                 "activeSkillOverrides": {
@@ -667,19 +792,38 @@ def main() -> None:
             "rankedPartnerSkillRecords": refinement_source["counts"]["tableRanked"],
             "changedPartnerSkillRecords": refinement_source["counts"]["tableChanged"],
             "specialRefinementRecords": refinement_source["counts"]["specialCovered"],
+            "items": items_source["counts"]["items"],
+            "legalItems": EXPECTED_LEGAL_ITEMS,
+            "itemRecipes": items_source["counts"]["recipes"],
+            "itemRecipeProducts": items_source["counts"]["recipeProducts"],
+            "alternateItemRecipeProducts": items_source["counts"]["alternateRecipeProducts"],
+            "itemTechnologyUnlocks": items_source["counts"]["technologyUnlocks"],
+            "itemShopOffers": items_source["counts"]["shopOffers"],
+            "itemLocalizedNames": items_source["counts"]["localizedNames"],
+            "itemIconRecords": items_source["counts"]["icons"],
+            "itemIconFiles": item_icon_files,
+            "itemCycles": items_source["counts"]["cycles"],
+            "itemCanonicalizedReferences": items_source["counts"]["canonicalizedReferences"],
+            "unresolvedItemRefs": items_source["counts"]["unresolvedItemRefs"],
+            "unresolvedTechnologyRecipeRefs": items_source["counts"]["unresolvedTechnologyRecipeRefs"],
+            "unresolvedShopItemRefs": items_source["counts"]["unresolvedShopItemRefs"],
         },
         "checksums": {
             "breeding": sha256(breeding_bytes),
             "paldex": sha256(paldex_bytes),
             "skills": sha256(skills_bytes),
+            "items": sha256(items_bytes),
+            "recipes": sha256(recipes_bytes),
             "icons": icon_bundle_sha256(pals),
+            "itemIcons": item_icon_hash,
         },
     }
     (DATA / "manifest.json").write_bytes(json_bytes(manifest))
     print(
         f"Generated {len(pals)} Pals, {len(rules)} rules "
         f"({usable_rules} selectable), {game_icons} PalCalc PNG icons, and "
-        f"{len(pals) - game_icons} hidden-record SVG placeholders."
+        f"{len(pals) - game_icons} hidden-record SVG placeholders, "
+        f"{len(items_source['items'])} items, and {len(items_source['recipes'])} item recipes."
     )
 
 

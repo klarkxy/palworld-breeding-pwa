@@ -1,0 +1,9 @@
+{
+  "Rows": {
+    "ITEM_NAME_Ore": { "TextData": "Ore" },
+    "ITEM_NAME_Ingot": { "TextData": "Ingot" },
+    "ITEM_NAME_Scrap": { "TextData": "Metal Scrap" },
+    "ITEM_NAME_Nail": { "TextData": "Nail" },
+    "ITEM_NAME_Wood": { "TextData": "Wood" }
+  }
+}

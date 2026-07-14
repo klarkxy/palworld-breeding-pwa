@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { NAlert, NButton, NEmpty, NSpin } from "naive-ui";
 
-defineProps<{ isLoading: boolean; error: string }>();
+withDefaults(defineProps<{ isLoading: boolean; error: string; loadingText?: string }>(), {
+  loadingText: "正在加载配种数据…",
+});
 defineEmits<{ retry: [] }>();
 </script>
 
 <template>
   <div v-if="isLoading" class="data-state" role="status" aria-live="polite">
     <NSpin>
-      <template #description>正在加载配种数据…</template>
+      <template #description>{{ loadingText }}</template>
     </NSpin>
   </div>
   <div v-else-if="error" class="data-state data-state--error" role="alert">

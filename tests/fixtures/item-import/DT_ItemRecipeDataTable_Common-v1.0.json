@@ -1,0 +1,29 @@
+{
+  "Exports": [
+    {
+      "Rows": {
+        "Recipe_Ingot": {
+          "Product_Id": { "Key": "Ingot" },
+          "Product_Count": 1,
+          "WorkAmount": 100,
+          "Material1_Id": { "Key": "Ore" },
+          "Material1_Count": 2
+        },
+        "Recipe_Scrap_From_Ingot": {
+          "Product_Id": "Scrap",
+          "Product_Count": 2,
+          "WorkAmount": 50,
+          "Material1_Id": "Ingot",
+          "Material1_Count": 1
+        },
+        "Recipe_Ingot_From_Scrap": {
+          "Product_Id": "Ingot",
+          "Product_Count": 1,
+          "WorkAmount": 80,
+          "Material1_Id": "Scrap",
+          "Material1_Count": 3
+        }
+      }
+    }
+  ]
+}

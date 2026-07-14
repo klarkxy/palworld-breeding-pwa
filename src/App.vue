@@ -26,6 +26,7 @@ const navigation = [
   { to: "/paths", label: "路线", icon: "⌁" },
   { to: "/paldex", label: "图鉴", icon: "▦" },
   { to: "/passives", label: "词条", icon: "✦" },
+  { to: "/items", label: "道具", icon: "▣" },
 ];
 const themeOverrides: GlobalThemeOverrides = {
   common: {

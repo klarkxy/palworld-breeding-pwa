@@ -1,0 +1,9 @@
+{
+  "Rows": {
+    "ITEM_NAME_ore": { "TextData": "矿石" },
+    "ITEM_NAME_Ingot": { "TextData": "金属锭" },
+    "ITEM_NAME_Scrap": { "TextData": "金属碎片" },
+    "ITEM_NAME_Nail": { "TextData": "钉子" },
+    "ITEM_NAME_Wood": { "TextData": "木材" }
+  }
+}

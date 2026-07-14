@@ -1,0 +1,13 @@
+{
+  "Rows": {
+    "Technology_Metal": {
+      "Level": 10,
+      "TechnologyPoint": 2,
+      "TechnologyType": "EPalTechnologyType::Normal",
+      "RecipeUnlocks": [
+        { "RecipeID": { "Key": "Recipe_Ingot" } },
+        { "RecipeID": "Recipe_Nail_A", "Level": 12 }
+      ]
+    }
+  }
+}
