@@ -42,6 +42,17 @@ EXPECTED_ITEM_ICON_RECORDS = 2_456
 EXPECTED_ITEM_ICON_FILES = 929
 EXPECTED_ITEM_CYCLES = 2
 EXPECTED_ITEM_REFERENCE_CORRECTIONS = 10
+EXPECTED_ITEM_DROP_SOURCE_ROWS = 790
+EXPECTED_ITEM_DROP_EDGES = 2_645
+EXPECTED_ITEM_DROP_ITEMS = 148
+EXPECTED_ITEM_DROP_CAPTURE_INELIGIBLE_EDGES = 32
+EXPECTED_ITEM_DROP_REFERENCE_CORRECTIONS = 2
+EXPECTED_CHEST_FIELDS = 109
+EXPECTED_CHEST_POOLS = 250
+EXPECTED_CHEST_POSITIVE_ENTRIES = 3_523
+EXPECTED_CHEST_DROP_EDGES = 3_504
+EXPECTED_CHEST_DROP_ITEMS = 647
+EXPECTED_CHEST_SOURCES = 170
 EXPECTED_SAVEPAL_GAP = {"DarkMutant"}
 MOVEMENT_FIELDS = (
     "slowWalkSpeed",
@@ -223,6 +234,243 @@ def build_item_documents(
         "cycles": snapshot["cycles"],
     }
     return items_document, recipes_document, item_icon_files, item_icon_hash
+
+
+def build_item_drop_document(
+    snapshot: dict[str, Any],
+    chest_snapshot: dict[str, Any],
+    items: list[dict[str, Any]],
+    pal_ids: set[str],
+) -> dict[str, Any]:
+    assert snapshot["schemaVersion"] == 2
+    assert snapshot["source"]["gameVersion"] == "1.0"
+    assert snapshot["source"]["gameBuildId"] == "24088745"
+    assert snapshot["source"]["mappingSha256"] == (
+        "741798898aabf3da8803e26ff005a35052b33bd0c90d771aabbb5f2c367f7df7"
+    )
+    assert snapshot["source"]["rawTable"]["rows"] == 1_044
+    assert snapshot["source"]["rawTable"]["sha256"] == (
+        "a99ec796fa4aad683f12af836c41c43c211883d3766ad0be10ec8226f4da9e5c"
+    )
+    assert snapshot["source"]["monsterParameterTable"]["rows"] == 753
+    assert snapshot["source"]["monsterParameterTable"]["sha256"] == (
+        "f4e1ab7ac8c8b064d07d2967af16dbfca8f02181df273a5e872c79f957883644"
+    )
+    assert snapshot["source"]["palCatalogRows"] == 306
+    assert snapshot["source"]["selectablePalRows"] == 288
+    counts = snapshot["counts"]
+    assert counts["rawSourceRows"] == 1_044
+    assert counts["includedSourceRows"] == EXPECTED_ITEM_DROP_SOURCE_ROWS
+    assert counts["excludedSourceRows"] == 254
+    assert counts["rawMonsterParameterRows"] == 753
+    assert counts["sourceRowsByType"] == {"normal": 417, "alpha": 330, "predator": 43}
+    assert counts["distinctDropPals"] == 288
+    assert counts["palDropEdges"] == EXPECTED_ITEM_DROP_EDGES
+    assert counts["distinctDropItems"] == EXPECTED_ITEM_DROP_ITEMS
+    assert (
+        counts["captureIneligibleEdges"]
+        == EXPECTED_ITEM_DROP_CAPTURE_INELIGIBLE_EDGES
+    )
+    assert (
+        counts["canonicalizedItemReferences"]
+        == EXPECTED_ITEM_DROP_REFERENCE_CORRECTIONS
+    )
+    assert counts["unresolvedItemRefs"] == 0
+    assert counts["chestDropEdges"] == 0
+    assert snapshot["diagnostics"]["unresolvedItemRefs"] == []
+    assert snapshot["diagnostics"]["excludedByReason"] == {
+        "missingMonsterParameter": 204,
+        "nonSelectableOrUnknownTribe": 24,
+        "tribeOnlyAlias": 26,
+    }
+    assert len(snapshot["diagnostics"]["characterFNameCorrections"]) == 24
+    assert len(snapshot["diagnostics"]["palFNameCorrections"]) == 23
+    assert len(snapshot["diagnostics"]["monsterTribeMismatches"]) == 2
+    assert len(snapshot["diagnostics"]["referenceCorrections"]) == (
+        EXPECTED_ITEM_DROP_REFERENCE_CORRECTIONS
+    )
+
+    item_by_id = {item["id"]: item for item in items}
+    assert len(item_by_id) == len(items)
+    drops = snapshot["palDrops"]
+    assert len(drops) == EXPECTED_ITEM_DROP_EDGES
+    assert len({(drop["rowId"], drop["slot"]) for drop in drops}) == len(drops)
+    assert {drop["sourceType"] for drop in drops} <= {"normal", "alpha", "predator"}
+    assert all(drop["palId"] in pal_ids for drop in drops)
+    assert all(drop["itemId"] in item_by_id for drop in drops)
+    assert all(
+        isinstance(drop["level"], int) and drop["level"] >= 0
+        and isinstance(drop["slot"], int) and 1 <= drop["slot"] <= 10
+        and 0 < drop["baseChancePercent"] <= 100
+        and isinstance(drop["minQuantity"], int) and drop["minQuantity"] > 0
+        and isinstance(drop["maxQuantity"], int)
+        and drop["maxQuantity"] >= drop["minQuantity"]
+        for drop in drops
+    )
+    assert all(
+        drop["captureEligible"]
+        == (item_by_id[drop["itemId"]].get("typeB") != "FoodMeat")
+        for drop in drops
+    )
+    assert snapshot["chestDrops"] == []
+
+    assert chest_snapshot["schemaVersion"] == 1
+    assert chest_snapshot["source"]["gameVersion"] == "1.0"
+    assert chest_snapshot["source"]["gameBuildId"] == "24088745"
+    assert chest_snapshot["source"]["mappingSha256"] == (
+        "741798898aabf3da8803e26ff005a35052b33bd0c90d771aabbb5f2c367f7df7"
+    )
+    chest_counts = chest_snapshot["counts"]
+    expected_chest_counts = {
+        "rawLotteryRows": 8_777,
+        "rawFieldNames": 500,
+        "classifiedFieldNames": EXPECTED_CHEST_FIELDS,
+        "classifiedRawRows": 3_527,
+        "positiveWeightEntries": EXPECTED_CHEST_POSITIVE_ENTRIES,
+        "excludedNonPositiveWeightRows": 4,
+        "fieldGradePools": EXPECTED_CHEST_POOLS,
+        "poolItemSummaries": EXPECTED_CHEST_DROP_EDGES,
+        "classifiedDistinctItems": 648,
+        "distinctItems": EXPECTED_CHEST_DROP_ITEMS,
+        "sources": EXPECTED_CHEST_SOURCES,
+        "orphanPools": 0,
+    }
+    for key, expected in expected_chest_counts.items():
+        assert chest_counts[key] == expected, f"Unexpected chest snapshot count {key}"
+    assert chest_snapshot["diagnostics"]["unresolvedItemReferences"] == []
+    assert chest_snapshot["diagnostics"]["orphanPoolIds"] == []
+
+    pools = chest_snapshot["pools"]
+    entries = chest_snapshot["entries"]
+    sources = chest_snapshot["sources"]
+    summaries = chest_snapshot["summary"]
+    assert len(pools) == EXPECTED_CHEST_POOLS
+    assert len(entries) == EXPECTED_CHEST_POSITIVE_ENTRIES
+    assert len(sources) == EXPECTED_CHEST_SOURCES
+    assert len(summaries) == EXPECTED_CHEST_DROP_EDGES
+    pool_by_id = {pool["id"]: pool for pool in pools}
+    entry_by_id = {entry["id"]: entry for entry in entries}
+    assert len(pool_by_id) == len(pools)
+    assert len(entry_by_id) == len(entries)
+    assert len({pool["fieldName"] for pool in pools}) == EXPECTED_CHEST_FIELDS
+    assert all(entry["itemId"] in item_by_id for entry in entries)
+    assert all(entry["poolId"] in pool_by_id for entry in entries)
+    assert all(entry["weight"] > 0 for entry in entries)
+    assert all(
+        entry["probabilityBasis"] == "conditionalOnGrade"
+        and 0 <= entry["conditionalOnGradeChancePercent"] <= 100
+        and entry["expectedQuantityPerOpen"] >= 0
+        and isinstance(entry["minQuantity"], int)
+        and entry["minQuantity"] > 0
+        and isinstance(entry["maxQuantity"], int)
+        and entry["maxQuantity"] >= entry["minQuantity"]
+        for entry in entries
+    )
+
+    sources_by_field: dict[str, list[dict[str, Any]]] = {}
+    for source in sources:
+        assert source["fieldName"] in {pool["fieldName"] for pool in pools}
+        assert source["probabilityBasis"] == "conditionalOnGrade"
+        sources_by_field.setdefault(source["fieldName"], []).append(source)
+    assert len(sources_by_field) == EXPECTED_CHEST_FIELDS
+
+    public_sources = []
+    for field_name in sorted(sources_by_field):
+        field_sources = sorted(sources_by_field[field_name], key=lambda value: value["id"])
+        field_pools = sorted(
+            pool["id"] for pool in pools if pool["fieldName"] == field_name
+        )
+        pool_records = [pool_by_id[pool_id] for pool_id in field_pools]
+        first_pool = pool_records[0]
+        assert all(pool["sourceKind"] == first_pool["sourceKind"] for pool in pool_records)
+        assert all(pool["labelZh"] == first_pool["labelZh"] for pool in pool_records)
+        public_sources.append(
+            {
+                "id": f"field:{field_name}",
+                "fieldName": field_name,
+                "sourceKind": first_pool["sourceKind"],
+                "labelZh": first_pool["labelZh"],
+                "sourceLabel": first_pool["labelZh"],
+                "probabilityBasis": "conditionalOnGrade",
+                "gradeDistributionKnown": False,
+                "poolIds": field_pools,
+                "sourceRefs": [source["id"] for source in field_sources],
+            }
+        )
+
+    public_source_by_field = {source["fieldName"]: source for source in public_sources}
+    chest_drops = []
+    seen_summaries: set[tuple[str, str]] = set()
+    for summary in summaries:
+        summary_key = (summary["poolId"], summary["itemId"])
+        assert summary_key not in seen_summaries
+        seen_summaries.add(summary_key)
+        pool = pool_by_id[summary["poolId"]]
+        assert summary["itemId"] in item_by_id
+        assert summary["probabilityBasis"] == "conditionalOnGrade"
+        assert 0 < summary["conditionalOnGradeChancePercent"] <= 100
+        assert summary["expectedQuantityPerOpen"] > 0
+        variants = [entry_by_id[entry_id] for entry_id in summary["variantIds"]]
+        assert variants
+        assert all(
+            entry["poolId"] == summary["poolId"]
+            and entry["itemId"] == summary["itemId"]
+            for entry in variants
+        )
+        maximum_by_slot: dict[int, int] = {}
+        for entry in variants:
+            maximum_by_slot[entry["slot"]] = max(
+                maximum_by_slot.get(entry["slot"], 0), entry["maxQuantity"]
+            )
+        field_source = public_source_by_field[pool["fieldName"]]
+        chest_drops.append(
+            {
+                "poolId": summary["poolId"],
+                "sourceId": field_source["id"],
+                "sourceIds": field_source["sourceRefs"],
+                "sourceLabel": pool["labelZh"],
+                "labelZh": pool["labelZh"],
+                "sourceKind": pool["sourceKind"],
+                "fieldName": pool["fieldName"],
+                "slot": 0,
+                "itemId": summary["itemId"],
+                "probabilityBasis": "conditionalOnGrade",
+                "conditionalOnGradeChancePercent": summary[
+                    "conditionalOnGradeChancePercent"
+                ],
+                "expectedQuantityPerOpen": summary["expectedQuantityPerOpen"],
+                "minQuantity": min(entry["minQuantity"] for entry in variants),
+                "maxQuantity": sum(maximum_by_slot.values()),
+                "treasureBoxGrade": pool["treasureBoxGrade"],
+                "treasureGrade": pool["treasureBoxGrade"],
+                "variantIds": summary["variantIds"],
+                "slotContributions": summary["slotContributions"],
+            }
+        )
+    assert len(chest_drops) == EXPECTED_CHEST_DROP_EDGES
+    assert len({drop["itemId"] for drop in chest_drops}) == EXPECTED_CHEST_DROP_ITEMS
+
+    public_counts = {
+        **counts,
+        "chestDropEdges": len(chest_drops),
+        "chestDropItems": EXPECTED_CHEST_DROP_ITEMS,
+        "chestDropFields": EXPECTED_CHEST_FIELDS,
+        "chestDropPools": EXPECTED_CHEST_POOLS,
+        "chestDropPositiveEntries": EXPECTED_CHEST_POSITIVE_ENTRIES,
+        "chestAuditedSources": EXPECTED_CHEST_SOURCES,
+        "chestOrphanPools": 0,
+    }
+    return {
+        "schemaVersion": snapshot["schemaVersion"],
+        "gameVersion": snapshot["source"]["gameVersion"],
+        "gameBuildId": snapshot["source"]["gameBuildId"],
+        "source": snapshot["source"],
+        "chestSource": chest_snapshot["source"],
+        "counts": public_counts,
+        "palDrops": drops,
+        "chestDrops": chest_drops,
+        "chestSources": public_sources,
+    }
 
 
 def validate_sources(
@@ -640,6 +888,10 @@ def main() -> None:
     items_document, recipes_document, item_icon_files, item_icon_hash = build_item_documents(
         items_source
     )
+    item_drops_path = VENDOR / "palworld" / "item-drops-v1.json"
+    item_drops_source = read_json(item_drops_path)
+    chest_drops_path = VENDOR / "palworld" / "chest-drops-v1.json"
+    chest_drops_source = read_json(chest_drops_path)
     validate_sources(db, breeding_source, compact, movement_source)
 
     pals_by_key = {pal_key(pal["Id"]): pal["InternalName"] for pal in db["Pals"]}
@@ -661,6 +913,13 @@ def main() -> None:
     )
     rules = build_rules(breeding_source["Breeding"], pals_by_key)
     pal_ids = {pal["id"] for pal in pals}
+    selectable_pal_ids = {pal["id"] for pal in pals if pal["selectable"]}
+    item_drops_document = build_item_drop_document(
+        item_drops_source,
+        chest_drops_source,
+        items_source["items"],
+        selectable_pal_ids,
+    )
     assert all(
         rule[part] in pal_ids
         for rule in rules
@@ -674,11 +933,12 @@ def main() -> None:
     skills_bytes = json_bytes(skills)
     items_bytes = json_bytes(items_document)
     recipes_bytes = json_bytes(recipes_document)
+    item_drops_bytes = json_bytes(item_drops_document)
     active_overrides_source = read_json(
         VENDOR / "paldb" / "active-skill-overrides.zh-Hans.json"
     )
     partner_source = read_json(VENDOR / "paldb" / "partner-skills.zh-Hans.json")
-    selectable = {pal["id"] for pal in pals if pal["selectable"]}
+    selectable = selectable_pal_ids
     usable_rules = sum(
         rule["parentA"] in selectable
         and rule["parentB"] in selectable
@@ -694,6 +954,7 @@ def main() -> None:
     (DATA / "skills.json").write_bytes(skills_bytes)
     (DATA / "items.json").write_bytes(items_bytes)
     (DATA / "recipes.json").write_bytes(recipes_bytes)
+    (DATA / "item-drops.json").write_bytes(item_drops_bytes)
     for pal in pals:
         svg_path = ICONS / f"{pal['id']}.svg"
         if (ICONS / f"{pal['id']}.png").exists():
@@ -703,7 +964,7 @@ def main() -> None:
 
     manifest = {
         "gameVersion": "1.0",
-        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}-skills2-movement1-refinement1-items1",
+        "dataVersion": f"palworld-1.0-palcalc-{db['Version']}-skills2-movement1-refinement1-items1-drops2",
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "sources": {
             "palcalc": {
@@ -743,6 +1004,14 @@ def main() -> None:
             "localGameItems": {
                 **items_source["source"],
                 "snapshotSha256": text_file_sha256(items_path),
+            },
+            "localGameItemDrops": {
+                **item_drops_source["source"],
+                "snapshotSha256": text_file_sha256(item_drops_path),
+            },
+            "localGameChestDrops": {
+                **chest_drops_source["source"],
+                "snapshotSha256": text_file_sha256(chest_drops_path),
             },
             "paldb": {
                 "activeSkillOverrides": {
@@ -807,6 +1076,19 @@ def main() -> None:
             "unresolvedItemRefs": items_source["counts"]["unresolvedItemRefs"],
             "unresolvedTechnologyRecipeRefs": items_source["counts"]["unresolvedTechnologyRecipeRefs"],
             "unresolvedShopItemRefs": items_source["counts"]["unresolvedShopItemRefs"],
+            "itemDropSourceRows": item_drops_source["counts"]["includedSourceRows"],
+            "itemDropEdges": item_drops_source["counts"]["palDropEdges"],
+            "itemDropItems": item_drops_source["counts"]["distinctDropItems"],
+            "itemDropCaptureIneligibleEdges": item_drops_source["counts"]["captureIneligibleEdges"],
+            "itemDropCanonicalizedReferences": item_drops_source["counts"]["canonicalizedItemReferences"],
+            "itemDropUnresolvedItemRefs": item_drops_source["counts"]["unresolvedItemRefs"],
+            "chestDropEdges": chest_drops_source["counts"]["poolItemSummaries"],
+            "chestDropItems": chest_drops_source["counts"]["distinctItems"],
+            "chestDropFields": chest_drops_source["counts"]["classifiedFieldNames"],
+            "chestDropPools": chest_drops_source["counts"]["fieldGradePools"],
+            "chestDropPositiveEntries": chest_drops_source["counts"]["positiveWeightEntries"],
+            "chestAuditedSources": chest_drops_source["counts"]["sources"],
+            "chestOrphanPools": chest_drops_source["counts"]["orphanPools"],
         },
         "checksums": {
             "breeding": sha256(breeding_bytes),
@@ -814,6 +1096,7 @@ def main() -> None:
             "skills": sha256(skills_bytes),
             "items": sha256(items_bytes),
             "recipes": sha256(recipes_bytes),
+            "itemDrops": sha256(item_drops_bytes),
             "icons": icon_bundle_sha256(pals),
             "itemIcons": item_icon_hash,
         },
@@ -823,7 +1106,9 @@ def main() -> None:
         f"Generated {len(pals)} Pals, {len(rules)} rules "
         f"({usable_rules} selectable), {game_icons} PalCalc PNG icons, and "
         f"{len(pals) - game_icons} hidden-record SVG placeholders, "
-        f"{len(items_source['items'])} items, and {len(items_source['recipes'])} item recipes."
+        f"{len(items_source['items'])} items, {len(items_source['recipes'])} item recipes, and "
+        f"{len(item_drops_source['palDrops'])} Pal drop edges and "
+        f"{len(chest_drops_source['summary'])} grade-conditional chest drop edges."
     )
 
 

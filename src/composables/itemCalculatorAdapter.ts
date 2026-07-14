@@ -1,5 +1,8 @@
 import { calculateItemCraftPlan } from "@/core/itemCalculator";
 import type { ItemCraftIssue, ItemCraftResult } from "@/core/itemCalculator";
+import { calculateItemEconomics } from "@/core/itemEconomics";
+import type { ItemEconomicsRecord } from "@/core/itemEconomics";
+import { isCalculationRecipe } from "@/composables/itemRecipePolicy";
 import type { ItemRecipeRecord, ItemRecord } from "@/stores/itemData";
 
 export interface ItemCalculationRequest {
@@ -8,13 +11,8 @@ export interface ItemCalculationRequest {
   recipeChoices?: Readonly<Record<string, string>>;
 }
 
-/** Converts the extraction schema to the deliberately smaller calculator contract. */
-export function calculateItemPlanForView(
-  request: ItemCalculationRequest,
-  items: readonly ItemRecord[],
-  recipes: readonly ItemRecipeRecord[],
-): ItemCraftResult {
-  return calculateItemCraftPlan({
+function toCalculatorCatalog(items: readonly ItemRecord[], recipes: readonly ItemRecipeRecord[]) {
+  return {
     items: items.map((item) => ({
       id: item.id,
       names: {
@@ -23,7 +21,7 @@ export function calculateItemPlanForView(
       },
       ...(item.baseSellPrice === undefined ? {} : { sellPrice: item.baseSellPrice }),
     })),
-    recipes: recipes.map((recipe) => ({
+    recipes: recipes.filter(isCalculationRecipe).map((recipe) => ({
       id: recipe.id,
       output: { itemId: recipe.product.itemId, quantity: recipe.product.count },
       ingredients: recipe.materials.map((material) => ({
@@ -32,11 +30,28 @@ export function calculateItemPlanForView(
       })),
       ...(recipe.baseSeconds === undefined ? {} : { workAmount: recipe.baseSeconds }),
     })),
-  }, {
+  };
+}
+
+/** Converts the extraction schema to the deliberately smaller calculator contract. */
+export function calculateItemPlanForView(
+  request: ItemCalculationRequest,
+  items: readonly ItemRecord[],
+  recipes: readonly ItemRecipeRecord[],
+): ItemCraftResult {
+  return calculateItemCraftPlan(toCalculatorCatalog(items, recipes), {
     itemId: request.itemId,
     quantity: request.quantity,
     choices: request.recipeChoices,
   });
+}
+
+/** Per-item recursive work and sale efficiency for catalog display/sorting. */
+export function calculateItemEconomicsForView(
+  items: readonly ItemRecord[],
+  recipes: readonly ItemRecipeRecord[],
+): readonly ItemEconomicsRecord[] {
+  return calculateItemEconomics(toCalculatorCatalog(items, recipes));
 }
 
 export function itemCraftIssueText(issue: ItemCraftIssue) {

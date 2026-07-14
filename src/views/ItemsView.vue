@@ -9,15 +9,22 @@ import { pinyin } from "pinyin-pro";
 import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
+import ItemCraftTree from "@/components/ItemCraftTree.vue";
+import ItemDropSources from "@/components/ItemDropSources.vue";
 import ItemIcon from "@/components/ItemIcon.vue";
 import PageIntro from "@/components/PageIntro.vue";
-import { calculateItemPlanForView, itemCraftIssueText } from "@/composables/itemCalculatorAdapter";
+import { buildItemCraftTree } from "@/components/itemCraftTree";
+import {
+  calculateItemEconomicsForView, calculateItemPlanForView, itemCraftIssueText,
+} from "@/composables/itemCalculatorAdapter";
+import { isCalculationRecipe, isPalSphereRecyclingRecipe } from "@/composables/itemRecipePolicy";
 import type { ItemCraftIssue } from "@/core/itemCalculator";
 import { useItemDataStore } from "@/stores/itemData";
 import { usePalDataStore } from "@/stores/palData";
 import type { ItemRecipeRecord, ItemRecord } from "@/stores/itemData";
 
 type PageMode = "catalog" | "calculator";
+type ItemSort = "default" | "work-asc" | "work-desc" | "efficiency-desc" | "efficiency-asc";
 type ChoiceRequiredIssue = Extract<ItemCraftIssue, { kind: "choice-required" }>;
 
 const route = useRoute();
@@ -25,7 +32,7 @@ const router = useRouter();
 const itemData = useItemDataStore();
 const palData = usePalDataStore();
 const {
-  items, recipes, itemById, recipeById, recipesByProduct, recipesByMaterial, isLoading, error,
+  items, recipes, itemById, recipesByProduct, recipesByMaterial, isLoading, error,
 } = storeToRefs(itemData);
 const { palById, activeSkillById } = storeToRefs(palData);
 const { load } = itemData;
@@ -33,6 +40,7 @@ const { load } = itemData;
 const mode = ref<PageMode>("catalog");
 const query = ref("");
 const category = ref("");
+const itemSort = ref<ItemSort>("default");
 const visibleLimit = ref(120);
 const selectedItemId = ref("");
 const pendingCalculatorItemId = ref("");
@@ -228,13 +236,17 @@ watch([mode, targetItemId, quantity], ([nextMode, target, nextQuantity]) => {
   if (current !== JSON.stringify(nextQuery)) void router.replace({ query: nextQuery });
 }, { flush: "post" });
 
-watch([query, category], () => { visibleLimit.value = 120; });
+watch([query, category, itemSort], () => { visibleLimit.value = 120; });
+watch(targetItemId, (next, previous) => {
+  if (next !== previous) recipeChoices.value = {};
+});
 watch([items, targetItemId], () => {
   if (targetItemId.value && items.value.length && !itemById.value.has(targetItemId.value))
     targetItemId.value = "";
 });
 
 void load();
+void palData.load();
 
 const itemName = (item: ItemRecord | undefined) => item?.names.zh || item?.names.en || item?.id || "未知道具";
 const itemEnglishName = (item: ItemRecord) => item.names.en && item.names.en !== item.names.zh ? item.names.en : "";
@@ -307,20 +319,41 @@ const matchesSearch = (item: ItemRecord) => {
 };
 
 const catalogItems = computed(() => items.value.filter(isCatalogItem));
+const calculationRecipes = computed(() => recipes.value.filter(isCalculationRecipe));
+const calculationRecipesByProduct = computed(() => {
+  const index = new Map<string, ItemRecipeRecord[]>();
+  for (const recipe of calculationRecipes.value) {
+    const entries = index.get(recipe.product.itemId) ?? [];
+    entries.push(recipe);
+    index.set(recipe.product.itemId, entries);
+  }
+  return index;
+});
+const economicsByItemId = computed(() => new Map(
+  calculateItemEconomicsForView(items.value, calculationRecipes.value)
+    .map((entry) => [entry.itemId, entry]),
+));
 const categoryOptions = computed(() => [
   { label: "全部类别", value: "" },
   ...[...new Set(catalogItems.value.map((item) => item.typeA).filter((value): value is string => Boolean(value)))]
     .sort((a, b) => typeALabel(a).localeCompare(typeALabel(b), "zh-CN"))
     .map((value) => ({ label: typeALabel(value), value })),
 ]);
+const itemSortOptions = [
+  { label: "默认顺序", value: "default" },
+  { label: "总工作量：低到高", value: "work-asc" },
+  { label: "总工作量：高到低", value: "work-desc" },
+  { label: "金币/工作量：高到低", value: "efficiency-desc" },
+  { label: "金币/工作量：低到高", value: "efficiency-asc" },
+] satisfies { label: string; value: ItemSort }[];
 const filteredItems = computed(() => catalogItems.value
   .filter((item) => (!category.value || item.typeA === category.value) && matchesSearch(item))
-  .sort((a, b) => (a.sortId ?? Number.MAX_SAFE_INTEGER) - (b.sortId ?? Number.MAX_SAFE_INTEGER)
-    || itemName(a).localeCompare(itemName(b), "zh-CN")
-    || a.id.localeCompare(b.id, "en")));
+  .sort(compareCatalogItems));
 const visibleItems = computed(() => filteredItems.value.slice(0, visibleLimit.value));
 const craftableCount = computed(() => catalogItems.value
-  .filter((item) => recipesByProduct.value.has(item.id)).length);
+  .filter((item) => calculationRecipesByProduct.value.has(item.id)).length);
+const comparableCount = computed(() => catalogItems.value
+  .filter((item) => economicsByItemId.value.get(item.id)?.totalWorkAmount !== undefined).length);
 
 const itemOptions = computed(() => catalogItems.value
   .map((item) => ({
@@ -335,13 +368,14 @@ const selectedItemRecipes = computed(() => selectedItem.value
 const selectedItemUses = computed(() => selectedItem.value
   ? recipesByMaterial.value.get(selectedItem.value.id) ?? []
   : []);
+const selectedItemEconomics = computed(() => selectedItem.value
+  ? economicsByItemId.value.get(selectedItem.value.id)
+  : undefined);
 const targetItem = computed(() => itemById.value.get(targetItemId.value));
-const targetRecipes = computed(() => recipesByProduct.value.get(targetItemId.value) ?? []);
+const targetRecipes = computed(() => calculationRecipesByProduct.value.get(targetItemId.value) ?? []);
 const targetRecipeChoice = computed({
-  get: () => recipeChoices.value[targetItemId.value] ?? "",
-  set: (value: string) => {
-    recipeChoices.value = { ...recipeChoices.value, [targetItemId.value]: value };
-  },
+  get: () => recipeChoices.value[targetItemId.value] ?? null,
+  set: (value: string | null) => setRecipeChoice(targetItemId.value, value),
 });
 const targetRecipeOptions = computed(() => targetRecipes.value.map((recipe, index) => ({
   value: recipe.id,
@@ -353,17 +387,71 @@ const calculation = computed(() => targetItem.value
     itemId: targetItem.value.id,
     quantity: positiveInteger(quantity.value),
     recipeChoices: recipeChoices.value,
-  }, items.value, recipes.value)
+  }, items.value, calculationRecipes.value)
   : undefined);
 const plan = computed(() => calculation.value?.ok ? calculation.value.plan : undefined);
+const craftTree = computed(() => plan.value
+  ? buildItemCraftTree(plan.value, itemById.value)
+  : undefined);
 const calculationIssues = computed(() => calculation.value?.issues
   .filter((issue) => issue.kind !== "choice-required")
   .map(itemCraftIssueText) ?? []);
 const recipeChoiceIssues = computed<ChoiceRequiredIssue[]>(() => calculation.value?.issues
   .filter((issue): issue is ChoiceRequiredIssue => issue.kind === "choice-required" && issue.itemId !== targetItemId.value) ?? []);
+const reachableCalculationItems = computed(() => {
+  const reachable = new Set<string>();
+  const pending = targetItemId.value ? [targetItemId.value] : [];
+  while (pending.length) {
+    const itemId = pending.pop()!;
+    if (reachable.has(itemId)) continue;
+    reachable.add(itemId);
+    const candidates = calculationRecipesByProduct.value.get(itemId) ?? [];
+    const selectedId = recipeChoices.value[itemId];
+    const selected = selectedId
+      ? candidates.find((candidate) => candidate.id === selectedId)
+      : undefined;
+    for (const recipe of selected ? [selected] : candidates) {
+      for (const material of recipe.materials) pending.push(material.itemId);
+    }
+  }
+  return reachable;
+});
+const intermediateRecipeChoiceIds = computed(() => {
+  const itemIds = new Set(recipeChoiceIssues.value.map((issue) => issue.itemId));
+  for (const itemId of Object.keys(recipeChoices.value)) {
+    if (itemId !== targetItemId.value
+      && reachableCalculationItems.value.has(itemId)
+      && (calculationRecipesByProduct.value.get(itemId)?.length ?? 0) > 1)
+      itemIds.add(itemId);
+  }
+  return [...itemIds].sort((left, right) => itemName(itemById.value.get(left))
+    .localeCompare(itemName(itemById.value.get(right)), "zh-CN"));
+});
+
+function compareDefault(left: ItemRecord, right: ItemRecord) {
+  return (left.sortId ?? Number.MAX_SAFE_INTEGER) - (right.sortId ?? Number.MAX_SAFE_INTEGER)
+    || itemName(left).localeCompare(itemName(right), "zh-CN")
+    || left.id.localeCompare(right.id, "en");
+}
+
+function compareCatalogItems(left: ItemRecord, right: ItemRecord) {
+  if (itemSort.value === "default") return compareDefault(left, right);
+  const metric = itemSort.value.startsWith("work") ? "totalWorkAmount" : "goldPerWork";
+  const leftValue = economicsByItemId.value.get(left.id)?.[metric];
+  const rightValue = economicsByItemId.value.get(right.id)?.[metric];
+  if (leftValue === undefined && rightValue === undefined) return compareDefault(left, right);
+  if (leftValue === undefined) return 1;
+  if (rightValue === undefined) return -1;
+  const ascending = itemSort.value === "work-asc" || itemSort.value === "efficiency-asc";
+  return (ascending ? leftValue - rightValue : rightValue - leftValue) || compareDefault(left, right);
+}
 
 function formatNumber(value: number | undefined) {
   return value === undefined ? "—" : value.toLocaleString("zh-CN", { maximumFractionDigits: 3 });
+}
+
+function formatEfficiency(value: number | undefined) {
+  return value === undefined ? "—" : value.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
 }
 
 function formatRarity(item: ItemRecord) {
@@ -406,14 +494,18 @@ function finishPendingCalculator() {
   mode.value = "calculator";
 }
 
-function setRecipeChoice(itemId: string, recipeId: string) {
-  recipeChoices.value = { ...recipeChoices.value, [itemId]: recipeId };
+function setRecipeChoice(itemId: string, recipeId: string | null) {
+  if (!itemId) return;
+  const next = { ...recipeChoices.value };
+  if (recipeId) next[itemId] = recipeId;
+  else delete next[itemId];
+  recipeChoices.value = next;
 }
 </script>
 
 <template>
   <main class="page-shell page-shell--items">
-    <PageIntro eyebrow="资料库" title="道具工坊" description="查询道具参数与配方，或把目标数量展开成完整的材料清单和制作步骤。" />
+    <PageIntro eyebrow="资料库" title="道具工坊" description="查询道具、递归总工作量与出售效率，或把目标数量展开成完整材料树。" />
     <DataState :is-loading :error loading-text="正在加载道具与配方数据…" @retry="load">
       <NTabs
         v-model:value="mode"
@@ -431,7 +523,8 @@ function setRecipeChoice(itemId: string, recipeId: string) {
         <dl class="item-summary" aria-label="道具数据概览">
           <div><dt>收录道具</dt><dd>{{ catalogItems.length }}</dd></div>
           <div><dt>可制作道具</dt><dd>{{ craftableCount }}</dd></div>
-          <div><dt>配方记录</dt><dd>{{ recipes.length }}</dd></div>
+          <div><dt>可计算工作量</dt><dd>{{ comparableCount }}</dd></div>
+          <div><dt>计算配方</dt><dd>{{ calculationRecipes.length }}</dd></div>
         </dl>
         <section class="filter-bar filter-bar--items" aria-label="筛选道具">
           <label class="field filter-search">
@@ -441,6 +534,10 @@ function setRecipeChoice(itemId: string, recipeId: string) {
           <label class="field field--compact">
             <span class="field__label">类别</span>
             <NSelect v-model:value="category" :options="categoryOptions" :fallback-option="false" filterable size="large" :input-props="{ 'aria-label': '道具类别' }" />
+          </label>
+          <label class="field field--compact item-sort-field">
+            <span class="field__label">排序</span>
+            <NSelect v-model:value="itemSort" :options="itemSortOptions" :fallback-option="false" size="large" :input-props="{ 'aria-label': '道具排序' }" />
           </label>
         </section>
         <p class="result-note" role="status" aria-live="polite">找到 {{ filteredItems.length }} 个道具 · 当前显示 {{ visibleItems.length }} 个</p>
@@ -453,7 +550,9 @@ function setRecipeChoice(itemId: string, recipeId: string) {
                 <span class="item-card__category">{{ categoryLabel(item) }}</span>
                 <span class="item-card__description">{{ itemDescription(item) }}</span>
                 <span class="item-card__meta">
-                  <span v-if="recipesByProduct.has(item.id)">🛠️ {{ recipesByProduct.get(item.id)?.length }} 个配方</span>
+                  <span class="item-card__metric">⏱️ 总工作量 {{ formatNumber(economicsByItemId.get(item.id)?.totalWorkAmount) }}</span>
+                  <span class="item-card__metric">💰/⏱️ {{ formatEfficiency(economicsByItemId.get(item.id)?.goldPerWork) }}</span>
+                  <span v-if="calculationRecipesByProduct.has(item.id)">🛠️ {{ calculationRecipesByProduct.get(item.id)?.length }} 个配方</span>
                   <span v-if="item.baseSellPrice !== undefined">💰 {{ formatNumber(item.baseSellPrice) }}</span>
                   <span v-if="item.weight !== undefined">⚖️ {{ formatNumber(item.weight) }}</span>
                 </span>
@@ -478,29 +577,35 @@ function setRecipeChoice(itemId: string, recipeId: string) {
               <span class="field__label">目标数量</span>
               <NInputNumber :value="quantity" :min="1" :max="999999999" :precision="0" size="large" aria-label="目标数量" @update:value="quantity = positiveInteger($event)" />
             </label>
-            <label v-if="targetRecipes.length > 1" class="field">
+            <div v-if="targetRecipes.length > 1" class="field item-recipe-choice-field">
               <span class="field__label">目标配方</span>
-              <NSelect v-model:value="targetRecipeChoice" :options="targetRecipeOptions" :fallback-option="false" size="large" placeholder="请选择配方" :input-props="{ 'aria-label': '目标配方' }" />
-            </label>
+              <div class="item-recipe-choice-control">
+                <NSelect v-model:value="targetRecipeChoice" :options="targetRecipeOptions" :fallback-option="false" size="large" placeholder="请选择配方" :input-props="{ 'aria-label': '目标配方' }" />
+                <NButton v-if="targetRecipeChoice" secondary size="small" @click="setRecipeChoice(targetItemId, null)">清除配方</NButton>
+              </div>
+            </div>
           </div>
-          <p class="muted-copy">有多个配方时需要明确选择；结果会按每批产量自动向上取整。</p>
+          <p class="muted-copy">有多个配方时需要明确选择，已选配方可清除；结果按每批产量向上取整。帕鲁球回收矿碎块属于特殊兑换，不计入生产路线。</p>
         </EggshellCard>
 
         <NEmpty v-if="!targetItem" class="empty-state" description="选择目标道具后，这里会显示基础材料和逐步制作清单。" />
         <template v-else>
-          <section v-if="recipeChoiceIssues.length" class="item-choice-list" aria-label="选择中间材料配方">
-            <label v-for="issue in recipeChoiceIssues" :key="issue.itemId" class="field">
-              <span class="field__label">{{ itemName(itemById.get(issue.itemId)) }}的配方</span>
-              <NSelect
-                :value="recipeChoices[issue.itemId]"
-                :options="issue.recipeIds.map((recipeId, index) => ({ label: recipeChoiceLabel(recipeById.get(recipeId), index), value: recipeId }))"
-                :fallback-option="false"
-                size="large"
-                placeholder="请选择配方"
-                :input-props="{ 'aria-label': `${itemName(itemById.get(issue.itemId))}的配方` }"
-                @update:value="setRecipeChoice(issue.itemId, $event)"
-              />
-            </label>
+          <section v-if="intermediateRecipeChoiceIds.length" class="item-choice-list" aria-label="选择中间材料配方">
+            <div v-for="itemId in intermediateRecipeChoiceIds" :key="itemId" class="field item-recipe-choice-field">
+              <span class="field__label">{{ itemName(itemById.get(itemId)) }}的配方</span>
+              <div class="item-recipe-choice-control">
+                <NSelect
+                  :value="recipeChoices[itemId] ?? null"
+                  :options="(calculationRecipesByProduct.get(itemId) ?? []).map((recipe, index) => ({ label: recipeChoiceLabel(recipe, index), value: recipe.id }))"
+                  :fallback-option="false"
+                  size="large"
+                  placeholder="请选择配方"
+                  :input-props="{ 'aria-label': `${itemName(itemById.get(itemId))}的配方` }"
+                  @update:value="setRecipeChoice(itemId, $event)"
+                />
+                <NButton v-if="recipeChoices[itemId]" secondary size="small" @click="setRecipeChoice(itemId, null)">清除配方</NButton>
+              </div>
+            </div>
           </section>
           <NAlert v-for="issue in calculationIssues" :key="issue" class="item-plan-issue" type="warning" :show-icon="false">{{ issue }}</NAlert>
           <template v-if="plan">
@@ -526,18 +631,9 @@ function setRecipeChoice(itemId: string, recipeId: string) {
                 <p v-else class="muted-copy">该目标本身就是基础材料，或无需额外材料。</p>
               </section>
 
-              <section class="item-plan-panel" aria-labelledby="craft-step-title">
-                <header><p class="eyebrow">由下到上</p><h2 id="craft-step-title">制作步骤</h2></header>
-                <ol v-if="plan.steps.length" class="item-step-list">
-                  <li v-for="(step, index) in [...plan.steps].reverse()" :key="step.recipeId">
-                    <span class="item-step-list__number">{{ index + 1 }}</span>
-                    <div>
-                      <strong>{{ itemName(itemById.get(step.itemId)) }} × {{ formatNumber(step.producedQuantity) }}</strong>
-                      <small>{{ step.batchCount }} 批 · 需要 {{ formatNumber(step.requiredQuantity) }} · 余 {{ formatNumber(step.surplusQuantity) }}</small>
-                      <p>{{ step.ingredients.map(materialLabel).join(" ＋ ") || "无需材料" }}</p>
-                    </div>
-                  </li>
-                </ol>
+              <section class="item-plan-panel item-plan-panel--tree" aria-labelledby="craft-tree-title">
+                <header><p class="eyebrow">由成品展开</p><h2 id="craft-tree-title">材料合成树</h2></header>
+                <ItemCraftTree v-if="craftTree" :node="craftTree" aria-label="完整材料合成树" />
                 <p v-else class="muted-copy">没有可展开的制作配方。</p>
               </section>
             </div>
@@ -568,16 +664,23 @@ function setRecipeChoice(itemId: string, recipeId: string) {
             <div><dt>堆叠上限</dt><dd>{{ formatNumber(selectedItem.maxStack) }}</dd></div>
             <div><dt>稀有度</dt><dd>{{ formatRarity(selectedItem) }}</dd></div>
             <div><dt>作为材料</dt><dd>{{ selectedItemUses.length }} 个配方</dd></div>
+            <div><dt>单件总工作量</dt><dd>{{ formatNumber(selectedItemEconomics?.totalWorkAmount) }}</dd></div>
+            <div><dt>金币/工作量</dt><dd>{{ formatEfficiency(selectedItemEconomics?.goldPerWork) }}</dd></div>
           </dl>
           <p v-if="selectedItem.baseSellPrice !== undefined" class="item-detail__sell-note">
             基础出售价来自游戏数据；实际交易价格可能受玩家词条和其他交易效果影响。
           </p>
+          <p class="item-detail__sell-note">
+            总工作量按单件递归计算，多配方自动采用最低有效工作量；采集原料本身的获取成本不计入。
+          </p>
+          <ItemDropSources :item-id="selectedItem.id" :pal-by-id="palById" />
           <NButton type="primary" round block @click="calculateItem(selectedItem)">计算此道具</NButton>
           <section class="item-detail__recipes">
             <h3>制作配方</h3>
-            <article v-for="recipe in selectedItemRecipes" :key="recipe.id" class="item-recipe-card">
+            <article v-for="recipe in selectedItemRecipes" :key="recipe.id" class="item-recipe-card" :class="{ 'item-recipe-card--excluded': isPalSphereRecyclingRecipe(recipe) }">
               <header><strong>{{ recipe.id }}</strong><small>{{ recipeMeta(recipe) }}</small></header>
               <p>{{ recipe.materials.map(materialLabel).join(" ＋ ") || "无需材料" }}</p>
+              <small v-if="isPalSphereRecyclingRecipe(recipe)" class="item-recipe-card__policy">特殊回收兑换 · 不计入材料与工作量计算</small>
             </article>
             <p v-if="!selectedItemRecipes.length" class="muted-copy">当前数据中没有该道具的制作配方。</p>
           </section>

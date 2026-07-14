@@ -52,6 +52,34 @@ async function selectOption(page: Page, label: string, optionLabel: string) {
   throw new Error(`${label} 中没有选项：${optionLabel}`);
 }
 
+async function searchSelectOption(page: Page, label: string, needle: string, optionText: RegExp) {
+  const field = page.locator("label.field").filter({ has: page.locator(".field__label").getByText(label, { exact: true }) });
+  const input = field.getByRole("textbox", { name: label, exact: true });
+  await input.click();
+  await input.fill(needle);
+  const menu = page.locator(".n-base-select-menu:visible").last();
+  const option = menu.locator(".n-base-select-option").filter({ hasText: optionText });
+  await expect(option).toHaveCount(1);
+  await option.click();
+  await expect(page.locator(".n-base-select-menu:visible")).toHaveCount(0);
+}
+
+async function chooseFirstRequiredRecipes(page: Page) {
+  for (let index = 0; index < 12; index += 1) {
+    const fields = page.locator(".item-choice-list .item-recipe-choice-field");
+    const pendingFields = fields.filter({ has: page.locator(".n-base-selection-placeholder") });
+    const summary = page.locator(".item-plan-summary");
+    await expect.poll(async () => await pendingFields.count() + await summary.count()).toBeGreaterThan(0);
+    if (await summary.count()) return;
+    const field = pendingFields.first();
+    await field.locator(".n-base-selection").click();
+    const option = page.locator(".n-base-select-menu:visible .n-base-select-option").first();
+    await expect(option).toBeVisible();
+    await option.click();
+  }
+  throw new Error("中间材料配方选择超过预期层数");
+}
+
 async function selectTab(page: Page, label: string | RegExp) {
   await page.locator(".segmented-control .n-tabs-tab").filter({ hasText: label }).click();
 }
@@ -508,6 +536,14 @@ test("道具图鉴与材料计算器展开蛋糕的完整真实配方", async ({
   await openApp(page, "/items");
   await expect(page.getByRole("heading", { name: "道具工坊", level: 1 })).toBeVisible();
 
+  await selectOption(page, "排序", "金币/工作量：高到低");
+  const efficiencies = await page.locator(".item-card").evaluateAll((cards) => cards.slice(0, 12).map((card) => {
+    const value = card.querySelectorAll(".item-card__metric")[1]?.textContent?.match(/([\d,.]+)\s*$/)?.[1];
+    return Number(value?.replaceAll(",", ""));
+  }));
+  expect(efficiencies.every((value, index) => Number.isFinite(value)
+    && (index === 0 || efficiencies[index - 1]! >= value))).toBe(true);
+
   await page.getByLabel("搜索道具").fill("蛋糕");
   const cakeCard = page.getByRole("button", { name: "查看蛋糕详情", exact: true });
   await expect(cakeCard).toBeVisible();
@@ -519,6 +555,10 @@ test("道具图鉴与材料计算器展开蛋糕的完整真实配方", async ({
   await expect(drawer).toContainText("蛋糕 · 道具详情");
   await expect(drawer.locator(".item-detail__stats > div").filter({ hasText: "基础出售价" }))
     .toHaveText(/基础出售价\s*630/);
+  await expect(drawer.locator(".item-detail__stats > div").filter({ hasText: "单件总工作量" }))
+    .toHaveText(/单件总工作量\s*2,050/);
+  await expect(drawer.locator(".item-detail__stats > div").filter({ hasText: "金币\/工作量" }))
+    .toHaveText(/金币\/工作量\s*0\.307317/);
   const cakeRecipe = drawer.locator(".item-recipe-card");
   await expect(cakeRecipe).toHaveCount(1);
   await expect(cakeRecipe).toContainText(/Cake[\s\S]*产出 1[\s\S]*基准工作量 2,000/);
@@ -549,13 +589,99 @@ test("道具图鉴与材料计算器展开蛋糕的完整真实配方", async ({
     await expect(row).toHaveCount(1);
   }
 
-  const steps = page.locator(".item-step-list li");
-  await expect(steps).toHaveCount(2);
-  await expect(steps.nth(0)).toContainText(/面粉 × 10[\s\S]*10 批 · 需要 10 · 余 0[\s\S]*小麦 × 30/);
-  await expect(steps.nth(1)).toContainText(/蛋糕 × 2[\s\S]*2 批 · 需要 2 · 余 0/);
-  await expect(steps.nth(1)).toContainText(
-    /红色野莓 × 16[\s\S]*蛋 × 16[\s\S]*面粉 × 10[\s\S]*蜂蜜 × 4[\s\S]*牛奶 × 14/,
+  const tree = page.locator(".item-craft-tree[aria-label='完整材料合成树']");
+  await expect(tree).toBeVisible();
+  await expect(tree.locator(".item-craft-tree__node")).toHaveCount(7);
+  await expect(tree.locator(".item-craft-tree__node--base")).toHaveCount(5);
+  const treeCards = tree.locator(".item-craft-tree__card");
+  await expect(treeCards.nth(0)).toContainText(/蛋糕[\s\S]*× 2[\s\S]*需求\s*2[\s\S]*节点工作量\s*4,000/);
+  const flourCard = treeCards.filter({ hasText: "面粉" });
+  await expect(flourCard).toHaveCount(1);
+  await expect(flourCard).toContainText(/× 10[\s\S]*需求\s*10[\s\S]*节点工作量\s*100/);
+  await expect(flourCard.locator("..").locator(":scope > .item-craft-tree__children"))
+    .toContainText(/小麦[\s\S]*× 30/);
+  const treeA11y = await new AxeBuilder({ page }).include(".item-plan-panel--tree").analyze();
+  expect(treeA11y.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")))
+    .toEqual([]);
+});
+
+test("道具详情展示帕鲁掉落率、宝箱条件概率与图鉴链接", async ({ page }) => {
+  await openApp(page, "/items");
+  await page.getByLabel("搜索道具").fill("金属矿石");
+  await page.getByRole("button", { name: "查看金属矿石详情", exact: true }).click();
+
+  const drawer = page.locator(".item-drawer");
+  const sources = drawer.getByRole("region", { name: "掉落与开箱来源" });
+  await expect(sources).toBeVisible();
+  await expect(sources.getByRole("heading", { name: "帕鲁掉落", exact: true })).toBeVisible();
+  await expect(sources.getByRole("heading", { name: "宝箱掉落", exact: true })).toBeVisible();
+
+  const sandSerpentRows = sources.locator(".item-drop-source-card").filter({ hasText: "流沙蛇" });
+  await expect(sandSerpentRows).toHaveCount(2);
+  await expect(sandSerpentRows).toContainText([/普通[\s\S]*基础概率[\s\S]*100%/, /Alpha[\s\S]*基础概率[\s\S]*100%/]);
+  const palLink = sandSerpentRows.first().getByRole("link", { name: "查看流沙蛇的详细图鉴" });
+  await expect(palLink).toHaveAttribute("href", /#\/paldex\/Serpent_Ground$/);
+
+  const chestRows = sources.locator(".item-drop-source-card--chest");
+  await expect(chestRows).toHaveCount(5);
+  await expect(chestRows.first()).toContainText(
+    /场景掉落宝箱（DarkIsland_Drop_1）[\s\S]*宝箱品级 1[\s\S]*该品级开启概率[\s\S]*15\.2178%[\s\S]*该品级每箱期望[\s\S]*0\.4565/,
   );
+  await expect(sources.getByText("每次开启概率", { exact: true })).toHaveCount(0);
+  await expect(chestRows.first()).toContainText("不能作为全局开箱率");
+
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
+  const a11y = await new AxeBuilder({ page }).include(".item-drop-sources").analyze();
+  expect(a11y.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? "")))
+    .toEqual([]);
+});
+
+test("道具配方可清除且帕鲁球回收路线不进入计算", async ({ page }) => {
+  test.setTimeout(90_000);
+  await openApp(page, "/items?mode=calculator");
+
+  await searchSelectOption(page, "目标道具", "CarbonFiber", /碳纤维[\s\S]*CarbonFiber/);
+  const recipeField = page.locator(".item-recipe-choice-field").filter({ hasText: "目标配方" });
+  await expect(recipeField).toBeVisible();
+  await expect(page.locator(".item-plan-summary")).toHaveCount(0);
+  await recipeField.locator(".n-base-selection").click();
+  await page.locator(".n-base-select-menu:visible .n-base-select-option").first().click();
+  await expect(page.locator(".item-plan-summary")).toBeVisible();
+  await recipeField.getByRole("button", { name: "清除配方" }).click();
+  await expect(recipeField).toContainText("请选择配方");
+  await expect(page.locator(".item-plan-summary")).toHaveCount(0);
+
+  await searchSelectOption(page, "目标道具", "Pal_crystal_S", /帕鲁矿碎块[\s\S]*Pal_crystal_S/);
+  await recipeField.locator(".n-base-selection").click();
+  const mineralOptions = page.locator(".n-base-select-menu:visible .n-base-select-option");
+  await expect(mineralOptions).toHaveCount(3);
+  await expect(page.locator(".n-base-select-menu:visible")).not.toContainText("CryStal_PalSphere");
+});
+
+test("材料树区分共享中间品的本支需求与合并总量", async ({ page }) => {
+  test.setTimeout(90_000);
+  await openApp(page, "/items?mode=calculator&target=ChargeLaserRifle&qty=1");
+  const carbonField = page.locator(".item-choice-list .item-recipe-choice-field")
+    .filter({ has: page.locator(".field__label").getByText("碳纤维的配方", { exact: true }) });
+  await expect(carbonField).toBeVisible();
+  await carbonField.locator(".n-base-selection").click();
+  await page.locator(".n-base-select-menu:visible .n-base-select-option").first().click();
+  await expect(carbonField).toBeVisible();
+  await carbonField.getByRole("button", { name: "清除配方" }).click();
+  await expect(carbonField).toContainText("请选择配方");
+  await chooseFirstRequiredRecipes(page);
+
+  const tree = page.locator(".item-craft-tree[aria-label='完整材料合成树']");
+  await expect(tree).toBeVisible();
+  const batteryCards = tree.locator(".item-craft-tree__card").filter({ hasText: "生化电池" });
+  await expect(batteryCards).toHaveCount(2);
+  const merged = batteryCards.filter({ hasText: "合并制作节点" });
+  const reference = batteryCards.filter({ hasText: "合并引用" });
+  await expect(merged).toHaveCount(1);
+  await expect(reference).toHaveCount(1);
+  await expect(merged).toContainText(/本支需求\s*×\s*25[\s\S]*合并需求\s*55/);
+  await expect(reference).toContainText(/本支需求\s*×\s*30[\s\S]*已计入统一制作节点[\s\S]*合并总需求\s*×\s*55/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
 });
 
 test("词条图鉴收录正式词条并支持检索筛选与固定携带跳转", async ({ page }) => {

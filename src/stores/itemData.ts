@@ -44,6 +44,74 @@ export interface ItemRecipeRecord {
   technologyUnlocks?: readonly unknown[];
 }
 
+export type PalDropSourceType = "normal" | "alpha" | "predator";
+
+export interface PalItemDropRecord {
+  rowId: string;
+  characterId: string;
+  palId?: string;
+  sourceType: PalDropSourceType;
+  level: number;
+  itemId: string;
+  slot: number;
+  baseChancePercent: number;
+  minQuantity: number;
+  maxQuantity: number;
+  captureEligible: boolean;
+}
+
+export interface ChestItemDropRecord {
+  rowId?: string;
+  poolId?: string;
+  sourceId?: string;
+  labelZh?: string;
+  sourceLabel?: string;
+  sourceKind?: string;
+  region?: string;
+  fieldName?: string;
+  /** Pool summaries combine every contributing slot, so they use no slot or slot 0. */
+  slot?: number;
+  itemId: string;
+  /** Exact chance after combining slots, conditional on the chest grade already being known. */
+  conditionalOnGradeChancePercent?: number;
+  /** Compatible name for the combined chance before its probability basis is inspected. */
+  chanceAtLeastOnePercent?: number;
+  /** Exact, fully resolved chance for one chest opening. */
+  perOpenChancePercent?: number;
+  /** Backward-compatible alias for a fully resolved per-opening chance. */
+  chancePercent?: number;
+  /** Chance inside one selected slot or loot pool; not an overall opening chance. */
+  slotProbabilityPercent?: number;
+  minQuantity?: number;
+  maxQuantity?: number;
+  /** Expected quantity per opening, under the same probability basis as the chance. */
+  expectedQuantityPerOpen?: number;
+  /** Relative weight inside a conditional pool; never a percentage by itself. */
+  weight?: number;
+  probabilityBasis?: string;
+  conditionalOnGrade?: boolean;
+  gradeDistributionKnown?: boolean;
+  treasureBoxGrade?: number | string;
+  treasureGrade?: number | string;
+  slotContributions?: readonly Readonly<Record<string, unknown>>[];
+}
+
+export interface ChestDropSourceRecord {
+  id?: string;
+  poolId?: string;
+  sourceId?: string;
+  labelZh?: string;
+  label?: string;
+  sourceLabel?: string;
+  name?: string;
+  fieldName?: string;
+  region?: string;
+  sourceKind?: string;
+  treasureBoxGrade?: number | string;
+  treasureGrade?: number | string;
+  [key: string]: unknown;
+}
+
 interface ItemsFile {
   schemaVersion?: number;
   gameVersion?: string;
@@ -60,12 +128,22 @@ interface RecipesFile {
   cycles?: readonly (readonly string[])[];
 }
 
+interface ItemDropsFile {
+  schemaVersion?: number;
+  gameVersion?: string;
+  gameBuildId?: string;
+  palDrops: PalItemDropRecord[];
+  chestDrops?: ChestItemDropRecord[];
+  chestSources?: ChestDropSourceRecord[];
+  counts?: Readonly<Record<string, unknown>>;
+}
+
 const dataUrl = (file: string) => `${import.meta.env.BASE_URL}data/${file}`;
 
 async function fetchJson<T>(file: string): Promise<T> {
   const response = await fetch(dataUrl(file));
   if (response.status === 404)
-    throw new Error("当前版本尚未安装道具数据快照，请先生成 items.json 与 recipes.json。");
+    throw new Error("当前版本尚未安装完整道具数据快照，请先生成 items.json、recipes.json 与 item-drops.json。");
   if (!response.ok) throw new Error(`${file} 加载失败（${response.status}）`);
   return response.json() as Promise<T>;
 }
@@ -78,9 +156,23 @@ function unwrapRecipes(value: RecipesFile | ItemRecipeRecord[]) {
   return Array.isArray(value) ? value : value.recipes;
 }
 
+function groupDropsByItem<T extends { itemId: string }>(records: readonly T[]) {
+  const index = new Map<string, T[]>();
+  for (const record of records) {
+    const entries = index.get(record.itemId) ?? [];
+    entries.push(record);
+    index.set(record.itemId, entries);
+  }
+  return index;
+}
+
 export const useItemDataStore = defineStore("itemData", () => {
   const items = shallowRef<ItemRecord[]>([]);
   const recipes = shallowRef<ItemRecipeRecord[]>([]);
+  const palDrops = shallowRef<PalItemDropRecord[]>([]);
+  const chestDrops = shallowRef<ChestItemDropRecord[]>([]);
+  const chestSources = shallowRef<ChestDropSourceRecord[]>([]);
+  const isLoaded = ref(false);
   const isLoading = ref(false);
   const error = ref("");
   let loadPromise: Promise<void> | undefined;
@@ -107,22 +199,30 @@ export const useItemDataStore = defineStore("itemData", () => {
     }
     return index;
   });
+  const palDropsByItem = computed(() => groupDropsByItem(palDrops.value));
+  const chestDropsByItem = computed(() => groupDropsByItem(chestDrops.value));
 
   async function load() {
-    if (items.value.length && recipes.value.length) return;
+    if (isLoaded.value) return;
     if (loadPromise) return loadPromise;
     isLoading.value = true;
     error.value = "";
     loadPromise = (async () => {
       try {
-        const [itemsFile, recipesFile] = await Promise.all([
+        const [itemsFile, recipesFile, itemDropsFile] = await Promise.all([
           fetchJson<ItemsFile | ItemRecord[]>("items.json"),
           fetchJson<RecipesFile | ItemRecipeRecord[]>("recipes.json"),
+          fetchJson<ItemDropsFile>("item-drops.json"),
         ]);
         items.value = unwrapItems(itemsFile);
         recipes.value = unwrapRecipes(recipesFile);
+        palDrops.value = itemDropsFile.palDrops ?? [];
+        chestDrops.value = itemDropsFile.chestDrops ?? [];
+        chestSources.value = itemDropsFile.chestSources ?? [];
+        isLoaded.value = true;
       } catch (reason) {
         error.value = reason instanceof Error ? reason.message : "道具数据加载失败";
+        isLoaded.value = false;
         loadPromise = undefined;
       } finally {
         isLoading.value = false;
@@ -132,7 +232,8 @@ export const useItemDataStore = defineStore("itemData", () => {
   }
 
   return {
-    items, recipes, itemById, recipeById, recipesByProduct, recipesByMaterial,
-    isLoading, error, load,
+    items, recipes, palDrops, chestDrops, chestSources,
+    itemById, recipeById, recipesByProduct, recipesByMaterial, palDropsByItem, chestDropsByItem,
+    isLoaded, isLoading, error, load,
   };
 });

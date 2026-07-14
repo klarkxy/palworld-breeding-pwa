@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { access, readdir, readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { validateChestDropSnapshot } from "./import-chest-drops.mjs";
+import { validateItemDropSnapshot } from "./import-item-drops.mjs";
 import { validatePublicItemData } from "./import-item-snapshot.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -13,9 +15,93 @@ const digestText = (contents) => createHash("sha256")
 const digest = async (name) => digestText(await readFile(resolve(dataDir, name)));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 
-const [manifest, breeding, paldex, skills, itemDocument, recipeDocument] = await Promise.all([
+function validateMergedChestDrops(document, snapshot, itemIds) {
+  const poolsById = new Map(snapshot.pools.map((pool) => [pool.id, pool]));
+  const entriesById = new Map(snapshot.entries.map((entry) => [entry.id, entry]));
+  const summariesByKey = new Map(snapshot.summary.map((summary) => [
+    `${summary.poolId}\0${summary.itemId}`, summary,
+  ]));
+  const physicalSourcesByField = new Map();
+  for (const source of snapshot.sources) {
+    const records = physicalSourcesByField.get(source.fieldName) ?? [];
+    records.push(source);
+    physicalSourcesByField.set(source.fieldName, records);
+  }
+  assert(Array.isArray(document.chestDrops) && document.chestDrops.length === 3_504,
+    "Expected 3504 merged chest-drop edges");
+  assert(Array.isArray(document.chestSources) && document.chestSources.length === 109,
+    "Expected 109 field-level chest sources");
+  assert(JSON.stringify(document.chestSource) === JSON.stringify(snapshot.source),
+    "Public chest source metadata differs from normalized snapshot");
+
+  const publicSourcesByField = new Map();
+  for (const source of document.chestSources) {
+    assert(!publicSourcesByField.has(source.fieldName), `Duplicate public chest field: ${source.fieldName}`);
+    publicSourcesByField.set(source.fieldName, source);
+    const pools = snapshot.pools.filter((pool) => pool.fieldName === source.fieldName);
+    const physicalSources = physicalSourcesByField.get(source.fieldName) ?? [];
+    assert(pools.length > 0 && physicalSources.length > 0, `Unknown public chest field: ${source.fieldName}`);
+    assert(source.id === `field:${source.fieldName}`, `Invalid public chest source ID: ${source.id}`);
+    assert(source.probabilityBasis === "conditionalOnGrade" && source.gradeDistributionKnown === false,
+      `Chest source must remain grade-conditional: ${source.id}`);
+    assert(source.sourceKind === pools[0].sourceKind && source.labelZh === pools[0].labelZh
+      && source.sourceLabel === pools[0].labelZh, `Chest source presentation mismatch: ${source.id}`);
+    assert(JSON.stringify(source.poolIds) === JSON.stringify(pools.map((pool) => pool.id).sort()),
+      `Chest source pool references mismatch: ${source.id}`);
+    assert(JSON.stringify(source.sourceRefs)
+      === JSON.stringify(physicalSources.map((entry) => entry.id).sort()),
+    `Chest source physical references mismatch: ${source.id}`);
+  }
+
+  const seen = new Set();
+  for (const drop of document.chestDrops) {
+    const key = `${drop.poolId}\0${drop.itemId}`;
+    assert(!seen.has(key), `Duplicate public chest drop: ${key}`);
+    seen.add(key);
+    const summary = summariesByKey.get(key);
+    const pool = poolsById.get(drop.poolId);
+    const source = publicSourcesByField.get(drop.fieldName);
+    assert(summary && pool && source, `Unknown public chest drop: ${key}`);
+    assert(itemIds.has(drop.itemId), `Unknown chest-drop item: ${drop.itemId}`);
+    assert(drop.sourceId === source.id && drop.fieldName === pool.fieldName
+      && drop.sourceKind === pool.sourceKind && drop.sourceLabel === pool.labelZh
+      && drop.labelZh === pool.labelZh, `Chest drop source mismatch: ${key}`);
+    assert(JSON.stringify(drop.sourceIds) === JSON.stringify(source.sourceRefs),
+      `Chest drop physical source references mismatch: ${key}`);
+    assert(drop.slot === 0 && drop.probabilityBasis === "conditionalOnGrade",
+      `Chest drop probability basis mismatch: ${key}`);
+    assert(drop.conditionalOnGradeChancePercent === summary.conditionalOnGradeChancePercent
+      && drop.expectedQuantityPerOpen === summary.expectedQuantityPerOpen,
+    `Chest drop probability mismatch: ${key}`);
+    assert(drop.treasureBoxGrade === pool.treasureBoxGrade
+      && drop.treasureGrade === pool.treasureBoxGrade, `Chest drop grade mismatch: ${key}`);
+    assert(JSON.stringify(drop.variantIds) === JSON.stringify(summary.variantIds)
+      && JSON.stringify(drop.slotContributions) === JSON.stringify(summary.slotContributions),
+    `Chest drop variant trace mismatch: ${key}`);
+    const variants = summary.variantIds.map((id) => entriesById.get(id));
+    assert(variants.every((entry) => entry && entry.poolId === drop.poolId && entry.itemId === drop.itemId),
+      `Chest drop has invalid variants: ${key}`);
+    const maximumBySlot = new Map();
+    for (const entry of variants)
+      maximumBySlot.set(entry.slot, Math.max(maximumBySlot.get(entry.slot) ?? 0, entry.maxQuantity));
+    assert(drop.minQuantity === Math.min(...variants.map((entry) => entry.minQuantity))
+      && drop.maxQuantity === [...maximumBySlot.values()].reduce((sum, value) => sum + value, 0),
+    `Chest drop quantity range mismatch: ${key}`);
+  }
+  assert(seen.size === summariesByKey.size, "Public chest drops do not cover every pool/item summary");
+  return {
+    fields: publicSourcesByField.size,
+    pools: poolsById.size,
+    entries: entriesById.size,
+    edges: seen.size,
+    items: new Set(document.chestDrops.map((drop) => drop.itemId)).size,
+    sources: snapshot.sources.length,
+  };
+}
+
+const [manifest, breeding, paldex, skills, itemDocument, recipeDocument, itemDropDocument] = await Promise.all([
   readJson("manifest.json"), readJson("breeding.json"), readJson("paldex.json"), readJson("skills.json"),
-  readJson("items.json"), readJson("recipes.json"),
+  readJson("items.json"), readJson("recipes.json"), readJson("item-drops.json"),
 ]);
 const pals = paldex.pals;
 const rules = breeding.rules;
@@ -213,8 +299,30 @@ assert(manifest.counts.specialRefinementRecords === 18, "Unexpected special refi
 const itemValidation = validatePublicItemData(itemDocument, recipeDocument);
 const items = itemDocument.items;
 const itemRecipes = recipeDocument.recipes;
+const itemById = new Map(items.map((item) => [item.id, item]));
+const itemDropValidation = validateItemDropSnapshot(itemDropDocument, {
+  itemIds: new Set(itemById.keys()), itemById, palIds: selectableIds,
+});
 assert(itemValidation.items === 2_466 && itemValidation.recipes === 1_414,
   "Unexpected public item-data counts");
+assert(itemDropValidation.includedSourceRows === 790 && itemDropValidation.palDropEdges === 2_645,
+  "Unexpected public item-drop counts");
+assert(JSON.stringify(itemDropValidation.sourceRowsByType)
+  === JSON.stringify({ normal: 417, alpha: 330, predator: 43 }),
+"Unexpected item-drop source-type counts");
+assert(itemDropValidation.rawMonsterParameterRows === 753
+  && itemDropValidation.distinctDropPals === 288
+  && itemDropValidation.distinctDropItems === 148
+  && itemDropValidation.captureIneligibleEdges === 32
+  && itemDropValidation.canonicalizedItemReferences === 2
+  && itemDropValidation.unresolvedItemRefs === 0
+  && itemDropValidation.chestDropEdges === 3_504
+  && itemDropValidation.chestDropItems === 647
+  && itemDropValidation.chestDropFields === 109
+  && itemDropValidation.chestDropPools === 250
+  && itemDropValidation.chestDropPositiveEntries === 3_523
+  && itemDropValidation.chestAuditedSources === 170
+  && itemDropValidation.chestOrphanPools === 0, "Unexpected item-drop coverage counts");
 const legalItems = items.filter((item) => item.flags?.legalInGame === true);
 assert(legalItems.length === 1_891, `Expected 1891 legal items, got ${legalItems.length}`);
 assert(legalItems.every((item) => item.names?.zh && item.names?.en), "Legal item name coverage changed");
@@ -259,6 +367,79 @@ assert(JSON.stringify(manifestItemSource) === JSON.stringify(itemSnapshot.source
   "Manifest item source metadata differs from snapshot");
 assert(manifestItemSnapshotHash === digestText(itemSnapshotBytes), "Item snapshot hash mismatch");
 
+const itemDropSnapshotPath = resolve(root, "scripts/vendor/palworld/item-drops-v1.json");
+const itemDropSnapshotBytes = await readFile(itemDropSnapshotPath);
+const itemDropSnapshot = JSON.parse(itemDropSnapshotBytes.toString("utf8"));
+validateItemDropSnapshot(itemDropSnapshot, {
+  itemIds: new Set(itemById.keys()), itemById, palIds: selectableIds,
+});
+assert(JSON.stringify(itemDropDocument.source) === JSON.stringify(itemDropSnapshot.source),
+  "Public item-drop source metadata differs from normalized snapshot");
+assert(JSON.stringify(itemDropDocument.palDrops) === JSON.stringify(itemDropSnapshot.palDrops),
+  "Public Pal drops differ from normalized snapshot");
+for (const key of [
+  "rawSourceRows", "rawMonsterParameterRows", "includedSourceRows", "excludedSourceRows",
+  "distinctDropPals", "palDropEdges", "distinctDropItems", "captureIneligibleEdges",
+  "canonicalizedItemReferences", "unresolvedItemRefs",
+]) assert(itemDropDocument.counts[key] === itemDropSnapshot.counts[key],
+  `Public Pal-drop count differs from normalized snapshot: ${key}`);
+assert(JSON.stringify(itemDropDocument.counts.sourceRowsByType)
+  === JSON.stringify(itemDropSnapshot.counts.sourceRowsByType),
+"Public Pal-drop source-type counts differ from normalized snapshot");
+assert(itemDropSnapshot.source.itemSnapshotSha256 === digestText(itemSnapshotBytes),
+  "Item-drop source item-snapshot hash mismatch");
+const palCatalogBytes = await readFile(resolve(root, "scripts/vendor/palcalc/db.json"));
+assert(itemDropSnapshot.source.palCatalogSha256 === digestText(palCatalogBytes),
+  "Item-drop source Pal-catalog hash mismatch");
+assert(itemDropSnapshot.source.rawTable.sha256
+  === "a99ec796fa4aad683f12af836c41c43c211883d3766ad0be10ec8226f4da9e5c",
+"Raw Pal-drop table hash mismatch");
+assert(itemDropSnapshot.source.monsterParameterTable.sha256
+  === "f4e1ab7ac8c8b064d07d2967af16dbfca8f02181df273a5e872c79f957883644",
+"Raw Pal monster-parameter table hash mismatch");
+const { snapshotSha256: manifestItemDropSnapshotHash, ...manifestItemDropSource }
+  = manifest.sources.localGameItemDrops;
+assert(JSON.stringify(manifestItemDropSource) === JSON.stringify(itemDropSnapshot.source),
+  "Manifest item-drop source metadata differs from snapshot");
+assert(manifestItemDropSnapshotHash === digestText(itemDropSnapshotBytes),
+  "Item-drop snapshot hash mismatch");
+
+const chestDropSnapshotPath = resolve(root, "scripts/vendor/palworld/chest-drops-v1.json");
+const chestDropSnapshotBytes = await readFile(chestDropSnapshotPath);
+const chestDropSnapshot = JSON.parse(chestDropSnapshotBytes.toString("utf8"));
+const chestVendorCounts = validateChestDropSnapshot(chestDropSnapshot, {
+  itemIds: new Set(itemById.keys()),
+  expectedCounts: {
+    rawLotteryRows: 8_777,
+    rawFieldNames: 500,
+    classifiedFieldNames: 109,
+    classifiedRawRows: 3_527,
+    positiveWeightEntries: 3_523,
+    excludedNonPositiveWeightRows: 4,
+    fieldGradePools: 250,
+    poolItemSummaries: 3_504,
+    classifiedDistinctItems: 648,
+    distinctItems: 647,
+    sources: 170,
+    orphanPools: 0,
+  },
+});
+const mergedChestCounts = validateMergedChestDrops(
+  itemDropDocument, chestDropSnapshot, new Set(itemById.keys()),
+);
+assert(chestVendorCounts.poolItemSummaries === mergedChestCounts.edges
+  && mergedChestCounts.fields === 109
+  && mergedChestCounts.pools === 250
+  && mergedChestCounts.entries === 3_523
+  && mergedChestCounts.items === 647
+  && mergedChestCounts.sources === 170, "Merged chest-drop coverage changed");
+const { snapshotSha256: manifestChestDropSnapshotHash, ...manifestChestDropSource }
+  = manifest.sources.localGameChestDrops;
+assert(JSON.stringify(manifestChestDropSource) === JSON.stringify(chestDropSnapshot.source),
+  "Manifest chest-drop source metadata differs from snapshot");
+assert(manifestChestDropSnapshotHash === digestText(chestDropSnapshotBytes),
+  "Chest-drop snapshot hash mismatch");
+
 const itemIconNames = [...new Set(items.filter((item) => item.icon).map((item) => basename(item.icon)))].sort();
 const actualItemIconNames = (await readdir(resolve(root, "public/item-icons"), { withFileTypes: true }))
   .filter((entry) => entry.isFile()).map((entry) => entry.name).sort();
@@ -287,14 +468,28 @@ assert(manifest.counts.itemCycles === 2 && manifest.counts.itemCanonicalizedRefe
 assert(manifest.counts.unresolvedItemRefs === 0
   && manifest.counts.unresolvedTechnologyRecipeRefs === 0
   && manifest.counts.unresolvedShopItemRefs === 0, "Manifest unresolved item counts changed");
+assert(manifest.counts.itemDropSourceRows === 790
+  && manifest.counts.itemDropEdges === 2_645
+  && manifest.counts.itemDropItems === 148
+  && manifest.counts.itemDropCaptureIneligibleEdges === 32
+  && manifest.counts.itemDropCanonicalizedReferences === 2
+  && manifest.counts.itemDropUnresolvedItemRefs === 0
+  && manifest.counts.chestDropEdges === 3_504
+  && manifest.counts.chestDropItems === 647
+  && manifest.counts.chestDropFields === 109
+  && manifest.counts.chestDropPools === 250
+  && manifest.counts.chestDropPositiveEntries === 3_523
+  && manifest.counts.chestAuditedSources === 170
+  && manifest.counts.chestOrphanPools === 0, "Manifest item-drop counts changed");
 assert(manifest.checksums.breeding === await digest("breeding.json"), "Breeding checksum mismatch");
 assert(manifest.checksums.paldex === await digest("paldex.json"), "Paldex checksum mismatch");
 assert(manifest.checksums.skills === await digest("skills.json"), "Skills checksum mismatch");
 assert(manifest.checksums.items === await digest("items.json"), "Items checksum mismatch");
 assert(manifest.checksums.recipes === await digest("recipes.json"), "Recipes checksum mismatch");
+assert(manifest.checksums.itemDrops === await digest("item-drops.json"), "Item drops checksum mismatch");
 assert(manifest.checksums.icons === iconHash.digest("hex"), "Icon bundle checksum mismatch");
 assert(manifest.checksums.itemIcons === itemIconHash.digest("hex"), "Item icon bundle checksum mismatch");
-assert(manifest.dataVersion.endsWith("-skills2-movement1-refinement1-items1"),
+assert(manifest.dataVersion.endsWith("-skills2-movement1-refinement1-items1-drops2"),
   `Unexpected data version: ${manifest.dataVersion}`);
 for (const [name, file] of [["activeSkillOverrides", "active-skill-overrides.zh-Hans.json"], ["partnerSkills", "partner-skills.zh-Hans.json"]]) {
   const path = resolve(root, "scripts/vendor/paldb", file);
@@ -369,4 +564,4 @@ assert(manifest.sources.localGameRefinement.snapshotSha256
 assert(manifest.sources.localGameRefinement.rawArtifactSha256.special
   === "ca856bba482d8c2988d17dccde30880f49d0e4336e0260f68cd3e908febd3ae5",
 "Special refinement source hash mismatch");
-console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, ${passiveSkills.length} passive skills, ${items.length} items, ${itemRecipes.length} item recipes, ${manifest.counts.icons} Pal icons, and ${itemIconNames.length} item icon files.`);
+console.log(`Validated ${pals.length} Pals, ${rules.length} rules, ${activeSkills.length} active skills, ${partnerSkills.length} partner skills, ${passiveSkills.length} passive skills, ${items.length} items, ${itemRecipes.length} item recipes, ${itemDropDocument.palDrops.length} Pal drops, ${itemDropDocument.chestDrops.length} grade-conditional chest drops, ${manifest.counts.icons} Pal icons, and ${itemIconNames.length} item icon files.`);

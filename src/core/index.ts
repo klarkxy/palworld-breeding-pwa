@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./itemCalculator";
+export * from "./itemEconomics";
 export {
   buildBreedingIndex,
   findChains,
