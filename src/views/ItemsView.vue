@@ -21,6 +21,10 @@ import {
 import { isCalculationRecipe, isPalSphereRecyclingRecipe } from "@/composables/itemRecipePolicy";
 import type { ItemCraftIssue } from "@/core/itemCalculator";
 import {
+  buildItemFamilies, findMatchingFamilyVariant, itemRarityLabel, itemRarityTone, itemRarityValue,
+} from "@/core/itemFamilies";
+import type { ItemFamily } from "@/core/itemFamilies";
+import {
   decodeChoiceQuery, encodeChoiceQuery, isSnapshotQuery, queriesEqual,
   queryEnum, queryInteger, queryText, snapshotQuery,
 } from "@/routing/queryState";
@@ -32,12 +36,18 @@ type PageMode = "catalog" | "calculator";
 type ItemSort = "default" | "work-asc" | "work-desc" | "efficiency-desc" | "efficiency-asc";
 type ChoiceRequiredIssue = Extract<ItemCraftIssue, { kind: "choice-required" }>;
 
+interface CatalogFamilyEntry {
+  family: ItemFamily;
+  item: ItemRecord;
+  matchingItemCount: number;
+}
+
 const route = useRoute();
 const router = useRouter();
 const itemData = useItemDataStore();
 const palData = usePalDataStore();
 const {
-  items, recipes, itemById, recipesByProduct, recipesByMaterial, isLoading, error,
+  items, recipes, itemById, recipesByProduct, recipesByMaterial, itemIconPreviewById, isLoading, error,
 } = storeToRefs(itemData);
 const { palById, activeSkillById } = storeToRefs(palData);
 const { load } = itemData;
@@ -47,6 +57,7 @@ const query = ref("");
 const category = ref("");
 const itemSort = ref<ItemSort>("default");
 const visibleLimit = ref(120);
+const selectedVariantByFamilyId = ref<Record<string, string>>({});
 const selectedItemId = computed(() => {
   if (route.name !== "item-detail") return "";
   const value = Array.isArray(route.params.itemId) ? route.params.itemId[0] : route.params.itemId;
@@ -215,15 +226,6 @@ const ELEMENT_ICON_LABELS: Readonly<Record<string, string>> = {
   ElemIcon_Water: "💧",
 };
 
-const RARITY_LABELS: Readonly<Record<number, string>> = {
-  0: "普通",
-  1: "精良",
-  2: "稀有",
-  3: "史诗",
-  4: "传说",
-  5: "特殊",
-};
-
 const positiveInteger = (value: unknown) => typeof value === "number"
   ? Number.isSafeInteger(value) ? Math.min(999_999_999, Math.max(1, value)) : 1
   : queryInteger(value, 1, 999_999_999) ?? 1;
@@ -331,14 +333,23 @@ const isCatalogItem = (item: ItemRecord) => {
 const pinyinInitials = (value: string) => pinyin(value, {
   pattern: "first", toneType: "none", type: "array", nonZh: "removed",
 }).join("").toLocaleLowerCase();
+const normalizedSearchNeedle = computed(() => query.value.trim().toLocaleLowerCase());
 const matchesSearch = (item: ItemRecord) => {
-  const needle = query.value.trim().toLocaleLowerCase();
+  const needle = normalizedSearchNeedle.value;
   if (!needle) return true;
   return [
     item.id, item.names.zh, item.names.en, item.names.ja,
     item.description?.zh, item.description?.en, pinyinInitials(item.names.zh ?? ""),
   ].some((value) => value?.toLocaleLowerCase().includes(needle));
 };
+const matchesExactSearch = (item: ItemRecord) => {
+  const needle = normalizedSearchNeedle.value;
+  if (!needle) return false;
+  return [item.id, item.names.zh, item.names.en, item.names.ja]
+    .some((value) => value?.trim().toLocaleLowerCase() === needle);
+};
+const matchesCatalogFilters = (item: ItemRecord) =>
+  (!category.value || item.typeA === category.value) && matchesSearch(item);
 
 const catalogItems = computed(() => items.value.filter(isCatalogItem));
 const calculationRecipes = computed(() => recipes.value.filter(isCalculationRecipe));
@@ -368,10 +379,35 @@ const itemSortOptions = [
   { label: "金币/工作量：高到低", value: "efficiency-desc" },
   { label: "金币/工作量：低到高", value: "efficiency-asc" },
 ] satisfies { label: string; value: ItemSort }[];
-const filteredItems = computed(() => catalogItems.value
-  .filter((item) => (!category.value || item.typeA === category.value) && matchesSearch(item))
-  .sort(compareCatalogItems));
-const visibleItems = computed(() => filteredItems.value.slice(0, visibleLimit.value));
+const catalogFamilies = computed(() => buildItemFamilies(catalogItems.value, recipes.value));
+const familyByItemId = computed(() => {
+  const index = new Map<string, ItemFamily>();
+  for (const family of catalogFamilies.value)
+    for (const variant of family.variants) index.set(variant.id, family);
+  return index;
+});
+const filteredFamilies = computed<CatalogFamilyEntry[]>(() => catalogFamilies.value
+  .map((family) => {
+    const matchingItemCount = family.variants.filter(matchesCatalogFilters).length;
+    if (!matchingItemCount) return undefined;
+    const exactVariant = findMatchingFamilyVariant(
+      family,
+      (item) => matchesCatalogFilters(item) && matchesExactSearch(item),
+    );
+    const item = exactVariant
+      ?? findMatchingFamilyVariant(family, () => true, selectedVariantByFamilyId.value[family.id])
+      ?? family.representative;
+    return {
+      family,
+      item,
+      matchingItemCount,
+    };
+  })
+  .filter((entry): entry is CatalogFamilyEntry => entry !== undefined)
+  .sort((left, right) => compareCatalogItems(left.item, right.item)));
+const filteredFamilyItemCount = computed(() => filteredFamilies.value
+  .reduce((total, entry) => total + entry.matchingItemCount, 0));
+const visibleFamilies = computed(() => filteredFamilies.value.slice(0, visibleLimit.value));
 const craftableCount = computed(() => catalogItems.value
   .filter((item) => calculationRecipesByProduct.value.has(item.id)).length);
 const comparableCount = computed(() => catalogItems.value
@@ -380,10 +416,14 @@ const comparableCount = computed(() => catalogItems.value
 const itemOptions = computed(() => catalogItems.value
   .map((item) => ({
     value: item.id,
-    label: `${itemName(item)}${itemEnglishName(item) ? ` · ${itemEnglishName(item)}` : ""} · ${item.id}`,
+    label: `${itemName(item)} · ${itemRarityLabel(item)}${itemEnglishName(item) ? ` · ${itemEnglishName(item)}` : ""} · ${item.id}`,
   }))
   .sort((a, b) => a.label.localeCompare(b.label, "zh-CN")));
 const selectedItem = computed(() => itemById.value.get(selectedItemId.value));
+const selectedFamily = computed(() => familyByItemId.value.get(selectedItemId.value));
+const selectedItemPreview = computed(() => selectedItem.value
+  ? itemIconPreviewById.value.get(selectedItem.value.id)
+  : undefined);
 const selectedItemRecipes = computed(() => selectedItem.value
   ? recipesByProduct.value.get(selectedItem.value.id) ?? []
   : []);
@@ -485,6 +525,16 @@ watch([items, selectedItemId], () => {
   void router.replace({ name: "items", query: catalogRouteQuery.value });
 }, { immediate: true });
 
+watch([selectedItemId, familyByItemId], () => {
+  const itemId = selectedItemId.value;
+  const family = familyByItemId.value.get(itemId);
+  if (!itemId || !family || selectedVariantByFamilyId.value[family.id] === itemId) return;
+  selectedVariantByFamilyId.value = {
+    ...selectedVariantByFamilyId.value,
+    [family.id]: itemId,
+  };
+}, { immediate: true });
+
 watch(validRecipeChoices, (valid) => {
   if (!items.value.length) return;
   const normalized = Object.fromEntries(valid);
@@ -529,9 +579,30 @@ function formatEfficiency(value: number | undefined) {
 }
 
 function formatRarity(item: ItemRecord) {
-  const value = item.rarity ?? item.rank;
-  if (typeof value === "number") return RARITY_LABELS[value] ? `${RARITY_LABELS[value]} · ${value}` : formatNumber(value);
-  return value || "—";
+  const value = itemRarityValue(item);
+  return value === undefined ? "—" : `${itemRarityLabel(item)} · ${formatNumber(value)}`;
+}
+
+function itemPreview(item: ItemRecord | undefined) {
+  return item ? itemIconPreviewById.value.get(item.id) : undefined;
+}
+
+function itemIconBadge(item: ItemRecord | undefined) {
+  return itemPreview(item) ? "图纸" : undefined;
+}
+
+function itemDetailAriaLabel(item: ItemRecord, family: ItemFamily) {
+  return family.isGrouped
+    ? `查看${itemName(item)}（${itemRarityLabel(item)}）详情`
+    : `查看${itemName(item)}详情`;
+}
+
+function rememberFamilyVariant(family: ItemFamily, item: ItemRecord) {
+  if (selectedVariantByFamilyId.value[family.id] === item.id) return;
+  selectedVariantByFamilyId.value = {
+    ...selectedVariantByFamilyId.value,
+    [family.id]: item.id,
+  };
 }
 
 function materialLabel(material: { itemId: string; count?: number; quantity?: number }) {
@@ -553,7 +624,20 @@ function recipeMeta(recipe: ItemRecipeRecord) {
 }
 
 function openDetails(item: ItemRecord) {
+  const family = familyByItemId.value.get(item.id);
+  if (family) rememberFamilyVariant(family, item);
   void router.push({ name: "item-detail", params: { itemId: item.id }, query: catalogRouteQuery.value });
+}
+
+function selectFamilyVariant(family: ItemFamily, item: ItemRecord) {
+  rememberFamilyVariant(family, item);
+}
+
+function selectDetailVariant(item: ItemRecord) {
+  const family = familyByItemId.value.get(item.id);
+  if (family) rememberFamilyVariant(family, item);
+  if (route.name === "item-detail")
+    void router.replace({ name: "item-detail", params: { itemId: item.id }, query: catalogRouteQuery.value });
 }
 
 function calculateItem(item: ItemRecord) {
@@ -628,29 +712,76 @@ function setRecipeChoice(itemId: string, recipeId: string | null) {
             <NSelect v-model:value="itemSort" :options="itemSortOptions" :fallback-option="false" size="large" :input-props="{ 'aria-label': '道具排序' }" />
           </label>
         </section>
-        <p class="result-note" role="status" aria-live="polite">找到 {{ filteredItems.length }} 个道具 · 当前显示 {{ visibleItems.length }} 个</p>
-        <ul v-if="visibleItems.length" class="item-grid">
-          <li v-for="item in visibleItems" :key="item.id">
-            <button type="button" class="item-card" :aria-label="`查看${itemName(item)}详情`" @click="openDetails(item)">
-              <ItemIcon :item size="large" />
-              <span class="item-card__body">
-                <span class="item-card__identity"><strong>{{ itemName(item) }}</strong><small>{{ itemEnglishName(item) || item.id }}</small></span>
-                <span class="item-card__category">{{ categoryLabel(item) }}</span>
-                <span class="item-card__description">{{ itemDescription(item) }}</span>
-                <span class="item-card__meta">
-                  <span class="item-card__metric">⏱️ 总工作量 {{ formatNumber(economicsByItemId.get(item.id)?.totalWorkAmount) }}</span>
-                  <span class="item-card__metric">💰/⏱️ {{ formatEfficiency(economicsByItemId.get(item.id)?.goldPerWork) }}</span>
-                  <span v-if="calculationRecipesByProduct.has(item.id)">🛠️ {{ calculationRecipesByProduct.get(item.id)?.length }} 个配方</span>
-                  <span v-if="item.baseSellPrice !== undefined">💰 {{ formatNumber(item.baseSellPrice) }}</span>
-                  <span v-if="item.weight !== undefined">⚖️ {{ formatNumber(item.weight) }}</span>
+        <p class="result-note" role="status" aria-live="polite">找到 {{ filteredFamilies.length }} 组 · {{ filteredFamilyItemCount }} 个道具 · 当前显示 {{ visibleFamilies.length }} 组</p>
+        <ul v-if="visibleFamilies.length" class="item-grid">
+          <li v-for="entry in visibleFamilies" :key="entry.family.id">
+            <article
+              class="item-card"
+              :class="`item-card--rarity-${itemRarityTone(entry.item)}`"
+              :data-item-family-id="entry.family.id"
+              :data-selected-item-id="entry.item.id"
+            >
+              <button
+                type="button"
+                class="item-card__open"
+                :aria-label="itemDetailAriaLabel(entry.item, entry.family)"
+                @click="openDetails(entry.item)"
+              >
+                <ItemIcon
+                  :item="entry.item"
+                  :preview-item="itemPreview(entry.item)"
+                  :badge="itemIconBadge(entry.item)"
+                  size="large"
+                />
+                <span class="item-card__body">
+                  <span class="item-card__identity">
+                    <span class="item-card__identity-heading">
+                      <strong>{{ itemName(entry.item) }}</strong>
+                      <span
+                        class="item-rarity-badge"
+                        :class="`item-rarity-badge--${itemRarityTone(entry.item)}`"
+                      >{{ itemRarityLabel(entry.item) }}</span>
+                    </span>
+                    <small>{{ itemEnglishName(entry.item) || entry.item.id }}</small>
+                  </span>
+                  <span class="item-card__category">{{ categoryLabel(entry.item) }}</span>
+                  <span class="item-card__description">{{ itemDescription(entry.item) }}</span>
+                  <span class="item-card__meta">
+                    <span class="item-card__metric">⏱️ 总工作量 {{ formatNumber(economicsByItemId.get(entry.item.id)?.totalWorkAmount) }}</span>
+                    <span class="item-card__metric">💰/⏱️ {{ formatEfficiency(economicsByItemId.get(entry.item.id)?.goldPerWork) }}</span>
+                    <span v-if="calculationRecipesByProduct.has(entry.item.id)">🛠️ {{ calculationRecipesByProduct.get(entry.item.id)?.length }} 个配方</span>
+                    <span v-if="entry.item.baseSellPrice !== undefined">💰 {{ formatNumber(entry.item.baseSellPrice) }}</span>
+                    <span v-if="entry.item.weight !== undefined">⚖️ {{ formatNumber(entry.item.weight) }}</span>
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+              <div
+                v-if="entry.family.variants.length > 1"
+                class="item-quality-switch item-card__quality-switch"
+                role="group"
+                :aria-label="`${itemName(entry.item)}品质`"
+              >
+                <span class="item-quality-switch__label">{{ entry.family.variants.length }} 种品质</span>
+                <button
+                  v-for="variant in entry.family.variants"
+                  :key="variant.id"
+                  type="button"
+                  class="item-rarity-option"
+                  :class="`item-rarity-option--${itemRarityTone(variant)}`"
+                  :aria-pressed="entry.item.id === variant.id"
+                  :aria-label="`显示${itemName(variant)}（${itemRarityLabel(variant)}）`"
+                  @click="selectFamilyVariant(entry.family, variant)"
+                >
+                  <span class="item-rarity-option__dot" aria-hidden="true"></span>
+                  {{ itemRarityLabel(variant) }}
+                </button>
+              </div>
+            </article>
           </li>
         </ul>
         <NEmpty v-else class="empty-state" description="没有匹配的道具。" />
-        <div v-if="visibleItems.length < filteredItems.length" class="item-load-more">
-          <NButton secondary round @click="visibleLimit += 120">再显示 {{ Math.min(120, filteredItems.length - visibleItems.length) }} 个</NButton>
+        <div v-if="visibleFamilies.length < filteredFamilies.length" class="item-load-more">
+          <NButton secondary round @click="visibleLimit += 120">再显示 {{ Math.min(120, filteredFamilies.length - visibleFamilies.length) }} 组</NButton>
         </div>
       </section>
 
@@ -711,7 +842,12 @@ function setRecipeChoice(itemId: string, recipeId: string | null) {
                 <header><p class="eyebrow">最终需求</p><h2 id="base-material-title">基础材料</h2></header>
                 <ul v-if="plan.baseMaterials.length" class="item-material-list">
                   <li v-for="material in plan.baseMaterials" :key="material.itemId">
-                    <ItemIcon :item="itemById.get(material.itemId)" size="small" />
+                    <ItemIcon
+                      :item="itemById.get(material.itemId)"
+                      :preview-item="itemPreview(itemById.get(material.itemId))"
+                      :badge="itemIconBadge(itemById.get(material.itemId))"
+                      size="small"
+                    />
                     <span><strong>{{ itemName(itemById.get(material.itemId)) }}</strong><small>{{ material.itemId }}</small></span>
                     <b>× {{ formatNumber(material.quantity) }}</b>
                   </li>
@@ -753,10 +889,61 @@ function setRecipeChoice(itemId: string, recipeId: string | null) {
           </div>
         </template>
         <div v-if="selectedItem" class="item-detail">
-          <header class="item-detail__hero">
-            <ItemIcon :item="selectedItem" size="large" />
-            <div><p class="eyebrow">{{ categoryLabel(selectedItem) }}</p><h2>{{ itemName(selectedItem) }}</h2><p>{{ itemEnglishName(selectedItem) || selectedItem.id }}</p></div>
+          <header
+            class="item-detail__hero"
+            :class="`item-detail__hero--rarity-${itemRarityTone(selectedItem)}`"
+          >
+            <ItemIcon
+              :item="selectedItem"
+              :preview-item="selectedItemPreview"
+              :badge="itemIconBadge(selectedItem)"
+              size="large"
+            />
+            <div>
+              <p class="item-detail__eyebrow-row">
+                <span class="eyebrow">{{ categoryLabel(selectedItem) }}</span>
+                <span
+                  class="item-rarity-badge"
+                  :class="`item-rarity-badge--${itemRarityTone(selectedItem)}`"
+                >{{ itemRarityLabel(selectedItem) }}</span>
+              </p>
+              <h2>{{ itemName(selectedItem) }}</h2>
+              <p>{{ itemEnglishName(selectedItem) || selectedItem.id }}</p>
+            </div>
           </header>
+          <p v-if="selectedItemPreview" class="item-detail__preview-note">
+            该图纸使用其解锁成品“{{ itemName(selectedItemPreview) }}”的图标作为识别预览；当前价格、配方和掉落仍属于本图纸。
+          </p>
+          <section
+            v-if="selectedFamily && selectedFamily.variants.length > 1"
+            class="item-detail__quality"
+            aria-labelledby="item-detail-quality-title"
+          >
+            <header>
+              <p class="eyebrow">品质版本</p>
+              <h3 id="item-detail-quality-title">切换品质</h3>
+            </header>
+            <div
+              class="item-quality-switch item-detail__quality-switch"
+              role="group"
+              :aria-label="`切换${itemName(selectedItem)}品质`"
+            >
+              <button
+                v-for="variant in selectedFamily.variants"
+                :key="variant.id"
+                type="button"
+                class="item-rarity-option"
+                :class="`item-rarity-option--${itemRarityTone(variant)}`"
+                :aria-pressed="selectedItem.id === variant.id"
+                :aria-label="`查看${itemName(variant)}（${itemRarityLabel(variant)}）品质详情`"
+                :data-item-id="variant.id"
+                @click="selectDetailVariant(variant)"
+              >
+                <span class="item-rarity-option__dot" aria-hidden="true"></span>
+                {{ itemRarityLabel(variant) }}
+              </button>
+            </div>
+          </section>
           <p class="item-detail__description">{{ itemDescription(selectedItem) }}</p>
           <dl class="item-detail__stats">
             <div><dt>内部 ID</dt><dd><code>{{ selectedItem.id }}</code></dd></div>

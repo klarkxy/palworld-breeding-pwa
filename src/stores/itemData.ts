@@ -21,6 +21,9 @@ export interface ItemRecord {
   weight?: number;
   sortId?: number;
   iconId?: string;
+  iconTextureId?: string;
+  iconAssetPath?: string;
+  baseItemId?: string;
   icon?: string;
   flags?: readonly string[] | Readonly<Record<string, unknown>>;
   shopOffers?: readonly unknown[];
@@ -166,6 +169,17 @@ function groupDropsByItem<T extends { itemId: string }>(records: readonly T[]) {
   return index;
 }
 
+function groupPalDropsByPal(records: readonly PalItemDropRecord[]) {
+  const index = new Map<string, PalItemDropRecord[]>();
+  for (const record of records) {
+    if (!record.palId) continue;
+    const entries = index.get(record.palId) ?? [];
+    entries.push(record);
+    index.set(record.palId, entries);
+  }
+  return index;
+}
+
 export const useItemDataStore = defineStore("itemData", () => {
   const items = shallowRef<ItemRecord[]>([]);
   const recipes = shallowRef<ItemRecipeRecord[]>([]);
@@ -188,6 +202,16 @@ export const useItemDataStore = defineStore("itemData", () => {
     }
     return index;
   });
+  const recipesByUnlockItem = computed(() => {
+    const index = new Map<string, ItemRecipeRecord[]>();
+    for (const recipe of recipes.value) {
+      if (!recipe.unlockItemId) continue;
+      const entries = index.get(recipe.unlockItemId) ?? [];
+      entries.push(recipe);
+      index.set(recipe.unlockItemId, entries);
+    }
+    return index;
+  });
   const recipesByMaterial = computed(() => {
     const index = new Map<string, ItemRecipeRecord[]>();
     for (const recipe of recipes.value) {
@@ -199,7 +223,20 @@ export const useItemDataStore = defineStore("itemData", () => {
     }
     return index;
   });
+  const itemIconPreviewById = computed(() => {
+    const index = new Map<string, ItemRecord>();
+    for (const item of items.value) {
+      if (item.typeA !== "Blueprint" || item.icon !== "/item-icons/Blueprint.webp") continue;
+      const unlockRecipes = recipesByUnlockItem.value.get(item.id);
+      if (unlockRecipes?.length !== 1) continue;
+      const [unlockRecipe] = unlockRecipes;
+      const product = unlockRecipe && itemById.value.get(unlockRecipe.product.itemId);
+      if (product?.icon) index.set(item.id, product);
+    }
+    return index;
+  });
   const palDropsByItem = computed(() => groupDropsByItem(palDrops.value));
+  const palDropsByPal = computed(() => groupPalDropsByPal(palDrops.value));
   const chestDropsByItem = computed(() => groupDropsByItem(chestDrops.value));
 
   async function load() {
@@ -233,7 +270,8 @@ export const useItemDataStore = defineStore("itemData", () => {
 
   return {
     items, recipes, palDrops, chestDrops, chestSources,
-    itemById, recipeById, recipesByProduct, recipesByMaterial, palDropsByItem, chestDropsByItem,
+    itemById, recipeById, recipesByProduct, recipesByUnlockItem, recipesByMaterial,
+    itemIconPreviewById, palDropsByItem, palDropsByPal, chestDropsByItem,
     isLoaded, isLoading, error, load,
   };
 });

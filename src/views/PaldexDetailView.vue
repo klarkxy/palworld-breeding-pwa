@@ -6,6 +6,7 @@ import { useRoute, useRouter } from "vue-router";
 import DataState from "@/components/DataState.vue";
 import EggshellCard from "@/components/EggshellCard.vue";
 import PalIcon from "@/components/PalIcon.vue";
+import PalItemDrops from "@/components/PalItemDrops.vue";
 import ShareButton from "@/components/ShareButton.vue";
 import { elementName, formatDex, isSelectablePal, workName } from "@/composables/usePalData";
 import type { PartnerSkillRefinementMetric } from "@/core";
@@ -358,6 +359,9 @@ onUnmounted(() => window.removeEventListener("keydown", closeOnEscape));
         <div class="detail-grid">
           <EggshellCard class="stats-card"><p class="eyebrow">属性 · {{ selectedStars }} 星</p><h2>基础数值</h2><dl class="stat-grid"><div v-for="(value, key) in pal.stats" :key="key"><dt>{{ statName(key) }}</dt><dd>{{ statValue(key, value) }}</dd></div><div><dt>雄性概率</dt><dd>{{ malePercent }}%</dd></div><div><dt>配种力</dt><dd>{{ pal.breedingPower }}</dd></div></dl></EggshellCard>
           <EggshellCard class="work-card"><p class="eyebrow">工作 · {{ selectedStars }} 星</p><h2>据点分工</h2><ul v-if="Object.keys(selectedWorkSuitability).length" class="level-list"><li v-for="(level, work) in selectedWorkSuitability" :key="work"><span>{{ workName(work) }}</span><strong>Lv.{{ level }}</strong></li></ul><p v-else class="muted-copy">暂无数据。</p></EggshellCard>
+          <EggshellCard class="pal-drops-card">
+            <PalItemDrops :pal-id="pal.id" />
+          </EggshellCard>
           <EggshellCard class="movement-card">
             <p class="eyebrow">移动</p>
             <h2>移动参数</h2>
