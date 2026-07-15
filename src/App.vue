@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { NAlert, NButton, NConfigProvider, zhCN } from "naive-ui";
 import type { GlobalThemeOverrides } from "naive-ui";
 import { useRegisterSW } from "virtual:pwa-register/vue";
+import { createPwaRefreshAction, createReloadOnce } from "@/composables/pwaRefresh";
 import { isSelectablePal } from "@/composables/usePalData";
 import { useBreedingStore } from "@/stores/breeding";
 import { useCollectionStore } from "@/stores/collection";
@@ -18,7 +19,14 @@ const paths = usePathsStore();
 const paldex = usePaldexStore();
 const { manifest, pals } = storeToRefs(palData);
 const persistenceError = computed(() => collection.persistenceError || breeding.persistenceError || paths.persistenceError || paldex.persistenceError);
-const { needRefresh, updateServiceWorker } = useRegisterSW();
+const reloadAppOnce = createReloadOnce(() => window.location.reload());
+const { needRefresh, updateServiceWorker } = useRegisterSW({ onNeedReload: reloadAppOnce });
+const isApplyingUpdate = ref(false);
+const updateError = ref("");
+const refreshPwa = createPwaRefreshAction({
+  update: () => updateServiceWorker(),
+  reload: reloadAppOnce,
+});
 const licenseUrl = `${import.meta.env.BASE_URL}LICENSE.txt`;
 const noticesUrl = `${import.meta.env.BASE_URL}THIRD_PARTY_NOTICES.txt`;
 const navigation = [
@@ -100,7 +108,18 @@ function focusMain() {
   main.tabIndex = -1;
   main.focus();
 }
-
+async function refreshApp() {
+  if (isApplyingUpdate.value) return;
+  isApplyingUpdate.value = true;
+  updateError.value = "";
+  try {
+    await refreshPwa();
+  } catch {
+    updateError.value = "新版本尚未载入，请检查网络或关闭本站的其他标签页后重试。";
+  } finally {
+    isApplyingUpdate.value = false;
+  }
+}
 palData.load();
 watch([manifest, pals], ([nextManifest, nextPals]) => {
   if (nextManifest && nextPals.length) {
@@ -153,8 +172,27 @@ watch([manifest, pals], ([nextManifest, nextPals]) => {
     <p><a :href="licenseUrl">项目许可证（SATA-2.0）</a> · <a :href="noticesUrl">第三方许可与声明</a></p>
   </footer>
 
-  <NAlert v-if="needRefresh" class="update-toast" type="info" title="新配种数据已就绪" :show-icon="false">
-    <div class="update-toast__content"><p>刷新后再继续计算，避免使用旧配方。</p><NButton type="primary" round @click="updateServiceWorker(true)">立即刷新</NButton></div>
+  <NAlert
+    v-if="needRefresh || isApplyingUpdate || updateError"
+    class="update-toast"
+    :type="updateError ? 'warning' : 'info'"
+    :title="updateError ? '刷新未完成' : isApplyingUpdate ? '正在载入新版本' : '新配种数据已就绪'"
+    :show-icon="false"
+  >
+    <div class="update-toast__content" aria-live="polite">
+      <p v-if="updateError">{{ updateError }}</p>
+      <p v-else-if="isApplyingUpdate">正在切换到新数据，请稍候…</p>
+      <p v-else>刷新后再继续计算，避免使用旧配方。</p>
+      <NButton
+        type="primary"
+        round
+        :loading="isApplyingUpdate"
+        :disabled="isApplyingUpdate"
+        @click="refreshApp"
+      >
+        {{ updateError ? "重新尝试" : isApplyingUpdate ? "正在刷新…" : "立即刷新" }}
+      </NButton>
+    </div>
   </NAlert>
   <NAlert v-else-if="persistenceError" class="update-toast" type="warning" title="本次更改无法保存" :show-icon="false">
     本地数据格式异常，或浏览器拒绝了存储访问；当前页面仍可继续使用，下一次修改时会重新尝试保存。
