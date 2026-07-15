@@ -38,7 +38,7 @@ jobs:
           test -s dist/LICENSE.txt
           test -s dist/THIRD_PARTY_NOTICES.txt
       - name: Verify the Pages sub-path build
-        run: pnpm run test:e2e -- --grep @subpath
+        run: pnpm exec playwright test --grep '@subpath'
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173/${{ github.event.repository.name }}/
       - uses: actions/upload-pages-artifact@v5
